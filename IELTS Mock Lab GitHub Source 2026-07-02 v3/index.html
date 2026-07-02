@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IELTS Mock Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./node_modules/pdfjs-dist/build/pdf.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">IELTS</span>
+          <span class="brand-subtitle">Mock Lab</span>
+        </div>
+      </header>
+
+      <aside class="setup-panel" id="setupPanel">
+        <div class="setup-section">
+          <div>
+            <h1>IELTS Mock Lab</h1>
+            <p>直接解析 PDF / 图片，生成可练习、可批改、可保存记录的雅思四科模考。</p>
+          </div>
+          <button class="secondary-button" id="openAiSettingsBtn" type="button">模型设置</button>
+        </div>
+
+        <div class="setup-dashboard">
+          <div class="setup-column">
+            <section class="mode-panel">
+              <div class="mode-panel-head">
+                <div>
+                  <h2>今天练什么</h2>
+                  <p>先选目标，再把材料丢进 AI 导入流水线。</p>
+                </div>
+              </div>
+              <div class="mode-choice">
+                <label>
+                  <input type="radio" name="libraryMode" value="single" checked />
+                  <span>单科练习</span>
+                </label>
+                <label>
+                  <input type="radio" name="libraryMode" value="full" />
+                  <span>仿真模考</span>
+                </label>
+              </div>
+              <div class="subject-picker" id="subjectPicker">
+                <label>
+                  <span id="subjectPickerLabel">单科科目</span>
+                  <select id="singleSubject">
+                    <option value="listening">Listening 听力</option>
+                    <option value="reading">Reading 阅读</option>
+                    <option value="writing">Writing 写作</option>
+                    <option value="speaking">Speaking 口语</option>
+                  </select>
+                </label>
+              </div>
+              <section class="speaking-bank-panel" id="speakingBankPanel" hidden>
+                <div>
+                  <strong>当季口语题库</strong>
+                  <span id="speakingBankStatus">未导入题库</span>
+                </div>
+                <label class="secondary-button file-button">
+                  覆盖导入 JSON
+                  <input id="speakingBankInput" type="file" accept="application/json,.json" />
+                </label>
+                <label class="secondary-button file-button">
+                  AI 覆盖整理
+                  <input id="speakingBankAiInput" type="file" multiple accept="application/pdf,image/*,.txt,.md,.json,.csv" />
+                </label>
+                <button class="primary-button" id="randomSpeakingBtn" type="button">随机抽一套</button>
+              </section>
+              <section class="full-mock-panel" id="fullMockPanel" hidden>
+                <div class="full-mock-head">
+                  <div>
+                    <strong>选择模考套题</strong>
+                    <span>从考试库里各选一套，系统会按四科顺序连续考试。</span>
+                  </div>
+                  <button class="primary-button" id="startFullMockBtn" type="button">开始全科模考</button>
+                </div>
+                <div class="full-mock-grid">
+                  <label class="full-mock-card">
+                    <span>Listening <small id="fullMockListeningCount">0 套</small></span>
+                    <select id="fullMockListening"></select>
+                  </label>
+                  <label class="full-mock-card">
+                    <span>Reading <small id="fullMockReadingCount">0 套</small></span>
+                    <select id="fullMockReading"></select>
+                  </label>
+                  <label class="full-mock-card">
+                    <span>Writing <small id="fullMockWritingCount">0 套</small></span>
+                    <select id="fullMockWriting"></select>
+                  </label>
+                  <label class="full-mock-card">
+                    <span>Speaking <small id="fullMockSpeakingCount">0 套</small></span>
+                    <select id="fullMockSpeaking"></select>
+                    <button class="secondary-button" id="fullMockRandomSpeakingBtn" type="button">随机口语一套</button>
+                  </label>
+                </div>
+              </section>
+              <div class="subject-flow" id="subjectFlow">
+                <div><strong>Listening</strong><span>题目 PDF、答案、Part 1-4 音频</span></div>
+                <div><strong>Reading</strong><span>文章、题目、答案 PDF 或图片</span></div>
+                <div><strong>Writing</strong><span>Task 1 / Task 2，图表可一起传</span></div>
+                <div><strong>Speaking</strong><span>题卡导入、录音、ASR 后批改</span></div>
+              </div>
+              <p class="mode-hint" id="modeHint">单科练习：只上传当前科目的材料，生成后会作为单独考试加入考试库。</p>
+              <div class="setup-actions" id="importActions">
+                <button class="primary-button" id="showAiImportBtn" type="button">AI 导入</button>
+                <button class="secondary-button" id="showManualImportBtn" type="button">手动导入 JSON</button>
+              </div>
+            </section>
+
+            <section class="import-workspace" id="importWorkspace" hidden>
+              <div class="import-workspace-head">
+                <div>
+                  <h2 id="importTitle">导入题目</h2>
+                  <p id="importHint">请选择材料。</p>
+                </div>
+                <button class="secondary-button" id="closeImportBtn" type="button">取消</button>
+              </div>
+              <div class="glm-pipeline">
+                <div><strong>1 OCR</strong><span>PDF / 图片直接进入 OCR 模型</span></div>
+                <div><strong>2 文本</strong><span>文本模型合并材料并输出 JSON</span></div>
+                <div><strong>3 使用</strong><span>加入考试库，绑定音频和图片</span></div>
+              </div>
+              <div class="full-material-guide" id="fullMaterialGuide" hidden>
+                <div><strong>Listening</strong><span>题目 PDF、答案 PDF、Part 1-4 音频；需要图片时手动填 PDF 页码加入。</span></div>
+                <div><strong>Reading</strong><span>阅读题目 PDF、答案 PDF；如有图表可一起上传。</span></div>
+                <div><strong>Writing</strong><span>Task 1、Task 2 题目；Task 1 如有图表图片/PDF 一起上传。</span></div>
+                <div><strong>Speaking</strong><span>Part 1 问题、Part 2 cue card、Part 3 问题文本或 PDF。</span></div>
+              </div>
+
+            <section class="ai-import-panel import-panel" id="aiImportPanel" hidden>
+              <div class="library-head">
+                <h2>AI 生成考试</h2>
+                <span>PDF 可直接上传</span>
+              </div>
+              <div class="material-grid" id="aiMaterialGrid">
+                <label class="file-drop ai-question-drop" data-material-box="question">
+                  <span class="file-title">题目材料</span>
+                  <span class="file-hint" id="aiQuestionFileName">题目 PDF / 图片 / 文本</span>
+                  <input id="aiQuestionFileInput" type="file" multiple accept="application/pdf,image/*,.txt,.md,.json,.csv" />
+                </label>
+                <label class="file-drop ai-answer-drop" data-material-box="answer">
+                  <span class="file-title">答案材料</span>
+                  <span class="file-hint" id="aiAnswerFileName">答案 PDF / 图片 / 文本</span>
+                  <input id="aiAnswerFileInput" type="file" multiple accept="application/pdf,image/*,.txt,.md,.json,.csv" />
+                </label>
+                <label class="file-drop ai-audio-drop" data-material-box="audio">
+                  <span class="file-title">听力音频</span>
+                  <span class="file-hint" id="aiAudioFileName">Part 1-4 音频</span>
+                  <input id="aiAudioFileInput" type="file" multiple accept="audio/*,.mp3,.wav,.m4a" />
+                </label>
+                <label class="file-drop ai-transcript-drop" data-material-box="transcript" hidden>
+                  <span class="file-title">听力原文</span>
+                  <span class="file-hint" id="aiListeningTranscriptFileName">可选：PDF / 文本，用于查看解析</span>
+                  <input id="aiListeningTranscriptFileInput" type="file" multiple accept="application/pdf,.pdf,.txt,.md,.srt,.vtt,text/plain,text/markdown" />
+                </label>
+                <label class="file-drop ai-extra-drop" data-material-box="extra">
+                  <span class="file-title">图片 / 附加材料</span>
+                  <span class="file-hint" id="aiExtraFileName">地图、图表、补充 PDF 或图片</span>
+                  <input id="aiExtraFileInput" type="file" multiple accept="application/pdf,image/*,.txt,.md,.json,.csv" />
+                </label>
+              </div>
+              <section class="pdf-page-image-panel" id="aiPdfPageImageField" hidden>
+                <label class="field-stack">
+                  <span id="aiPdfPageImageTitle">将题目 PDF 第几页截图加入题目（可选）</span>
+                  <input id="aiQuestionPdfPageInput" type="number" min="1" step="1" placeholder="例如 3" />
+                  <small id="aiPdfPageImageHint">只在你填页码时生效；系统会把题目材料 PDF 的整页截图加入题目，不再自动识别或裁剪。</small>
+                </label>
+              </section>
+              <details class="manual-text-details">
+                <summary>补充文本</summary>
+                <div class="ai-text-grid">
+                  <label class="field-stack">
+                    <span>题目文本</span>
+                    <textarea id="aiQuestionText" rows="5" placeholder="可选。材料有扫描噪声或排版复杂时，把题目文字粘贴到这里。"></textarea>
+                  </label>
+                  <label class="field-stack" id="aiAnswerTextField">
+                    <span>答案文本</span>
+                    <textarea id="aiAnswerText" rows="5" placeholder="可选。粘贴 answer key 会显著提高准确率。"></textarea>
+                  </label>
+                </div>
+              </details>
+              <div class="setup-actions">
+                <button class="primary-button" id="aiGenerateBtn" type="button">生成并加入考试库</button>
+                <button class="secondary-button" id="aiCancelBtn" type="button" hidden>取消生成</button>
+                <span class="ai-status" id="aiStatus">等待材料</span>
+              </div>
+            </section>
+
+            <section class="manual-import-panel import-panel" id="manualImportPanel" hidden>
+              <div class="library-head">
+                <h2>手动导入考试</h2>
+                <span>JSON / 音频 / 图片</span>
+              </div>
+              <div class="setup-grid">
+                <label class="file-drop">
+                  <span class="file-title">题目 JSON</span>
+                  <span class="file-hint" id="jsonFileName">选择 .json 文件</span>
+                  <input id="jsonInput" type="file" accept="application/json,.json" />
+                </label>
+                <label class="file-drop">
+                  <span class="file-title">听力音频 / 图片资源</span>
+                  <span class="file-hint" id="assetFileName">可多选，按文件名自动匹配 JSON 引用</span>
+                  <input id="assetInput" type="file" multiple accept="audio/*,image/*,.png,.jpg,.jpeg,.webp" />
+                </label>
+              </div>
+
+              <section class="pending-panel" id="pendingPanel" hidden>
+                <div>
+                  <span class="pending-label">待添加</span>
+                  <h2 id="pendingTitle">Untitled Test</h2>
+                  <p id="pendingMeta">-</p>
+                </div>
+              </section>
+
+              <div class="setup-actions">
+                <button class="primary-button" id="confirmAddBtn" type="button" disabled>确认添加到考试库</button>
+                <button class="secondary-button" id="cancelPendingBtn" type="button" disabled>取消</button>
+              </div>
+            </section>
+            </section>
+
+            <section class="library-panel">
+              <div class="library-head">
+                <button class="library-toggle" id="libraryToggle" type="button" aria-expanded="true">
+                  <span class="library-toggle-icon" aria-hidden="true">▾</span>
+                  <span class="library-title">考试库</span>
+                </button>
+                <span id="libraryCount">0 套</span>
+              </div>
+              <div class="test-list" id="testList"></div>
+              <p class="empty-state" id="emptyLibrary">还没有导入考试。可以用 AI 生成，或手动添加 JSON。</p>
+            </section>
+
+            <section class="history-panel" id="historyPanel">
+              <div class="library-head">
+                <button class="library-toggle" id="historyToggle" type="button" aria-expanded="true">
+                  <span class="library-toggle-icon" aria-hidden="true">▾</span>
+                  <span class="library-title">考试记录</span>
+                </button>
+                <span id="historyCount">0 条</span>
+              </div>
+              <div class="history-list" id="historyList"></div>
+              <p class="empty-state" id="emptyHistory">还没有考试记录。</p>
+            </section>
+          </div>
+        </div>
+      </aside>
+
+      <main class="exam" id="exam" hidden>
+        <section class="exam-header">
+          <div>
+            <div class="exam-type" id="examTypeLabel">Reading</div>
+            <h2 id="examTitle">Untitled Test</h2>
+          </div>
+          <div class="exam-controls">
+           <button class="ghost-light-button" id="examHomeBtn" type="button">返回</button>
+           <div class="mode-toggle" id="examModeToggle">
+             <label><input type="radio" name="mode" value="mock" checked /><span>模考</span></label>
+             <label><input type="radio" name="mode" value="practice" /><span>练习</span></label>
+           </div>
+           <div class="timer" id="timer" aria-live="polite">60:00</div>
+            <button class="primary-button" id="submitBtn" type="button">交卷</button>
+          </div>
+        </section>
+
+        <nav class="part-tabs" id="partTabs" aria-label="Part navigation"></nav>
+
+        <section class="audio-panel" id="audioPanel" hidden>
+          <div class="audio-status">
+            <strong id="audioTitle">Audio</strong>
+            <span id="audioRule">模考模式：开始后音频只播放一次。</span>
+          </div>
+          <audio id="audioPlayer" preload="metadata"></audio>
+          <div class="audio-controls">
+            <button class="primary-button" id="audioStartBtn" type="button">播放</button>
+            <span id="audioClock">00:00 / 00:00</span>
+          </div>
+        </section>
+
+        <section class="workbench" id="workbench"></section>
+
+        <nav class="question-nav" id="questionNav" aria-label="题号导航"></nav>
+      </main>
+    </div>
+
+    <button class="highlight-popover" id="highlightBtn" type="button" hidden>Highlight</button>
+
+    <dialog class="settings-dialog" id="aiSettingsDialog">
+      <div class="dialog-head">
+        <h2>模型设置</h2>
+        <button class="icon-button" id="closeAiSettingsBtn" type="button" aria-label="关闭">x</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-summary">
+          <div><strong>OCR</strong><span>PDF / 图片材料直接交给 OCR 模型</span></div>
+          <div><strong>文本模型</strong><span>生成 JSON、错题解析、写作/口语反馈</span></div>
+          <div><strong>语音模型</strong><span>口语录音先转写，再进入文本模型批改</span></div>
+        </div>
+        <div class="provider-grid" id="aiProviderGrid"></div>
+        <div class="setup-actions">
+          <button class="primary-button" id="saveAiSettingsBtn" type="button">保存模型设置</button>
+          <button class="secondary-button" id="resetAiSettingsBtn" type="button">恢复默认</button>
+          <button class="secondary-button danger-button" id="clearLocalDataBtn" type="button">清除考试库和记录</button>
+          <span class="ai-status" id="aiSettingsStatus">本地保存，不会写入代码</span>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="result-dialog" id="resultDialog">
+      <div class="dialog-head">
+        <h2 id="resultTitle">成绩</h2>
+        <button class="icon-button" id="closeResultBtn" type="button" aria-label="关闭">x</button>
+      </div>
+      <div id="resultBody"></div>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
