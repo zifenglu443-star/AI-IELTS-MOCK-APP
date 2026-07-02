@@ -1,4 +1,3 @@
-
 name: Build desktop apps
 
 on:
@@ -18,7 +17,7 @@ jobs:
           - os: macos-latest
             command: npm run dist -- --mac zip --publish never
             artifact: macos
-          - os: windows-latest
+          - os: windows-2022
             command: npm run dist -- --win zip --x64 --publish never
             artifact: windows
 
