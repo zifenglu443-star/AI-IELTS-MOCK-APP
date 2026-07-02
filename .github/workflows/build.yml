@@ -1,0 +1,39 @@
+name: Build desktop apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            command: npm run dist -- --mac zip
+            artifact: macos
+          - os: windows-latest
+            command: npm run dist -- --win zip --x64
+            artifact: windows
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: ${{ matrix.command }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IELTS-Mock-Lab-${{ matrix.artifact }}
+          path: |
+            dist/*.zip
+            dist/*.blockmap
+
