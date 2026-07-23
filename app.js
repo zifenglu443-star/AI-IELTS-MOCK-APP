@@ -664,11 +664,16 @@ async function handleSpeakingBankInput(event) {
     const bank = normalizeSpeakingBank(window.IeltsCore.parseSafeJson(await file.text()));
     // A seasonal speaking bank is a single active source; importing replaces the old one.
     state.speakingBank = bank;
-    localStorage.setItem(SPEAKING_BANK_STORAGE_KEY, JSON.stringify(bank));
+    const persisted = safeSetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, JSON.stringify(bank));
     renderSpeakingBankStatus();
-    alert(`已覆盖导入当季口语题库：${bank.title || bank.season || "Speaking Bank"}`);
+    showToast(
+      persisted
+        ? `已覆盖导入当季口语题库：${bank.title || bank.season || "Speaking Bank"}`
+        : "题库已在当前页面导入，但本地保存失败。",
+      persisted ? "success" : "warning",
+    );
   } catch (error) {
-    alert(`口语题库无法导入：${error.message}`);
+    showToast(`口语题库无法导入：${error.message}`, "error");
   } finally {
     els.speakingBankInput.value = "";
   }
@@ -686,13 +691,18 @@ async function handleSpeakingBankAiInput(event) {
     });
     const bank = await mergeExtractedTextToSpeakingBank(material, extractedPages);
     state.speakingBank = normalizeSpeakingBank(bank);
-    localStorage.setItem(SPEAKING_BANK_STORAGE_KEY, JSON.stringify(state.speakingBank));
+    const persisted = safeSetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, JSON.stringify(state.speakingBank));
     downloadJson(state.speakingBank, makeJsonFileName(state.speakingBank.title || "speaking-season-bank"));
     renderSpeakingBankStatus();
-    alert(`AI 已覆盖导入当季口语题库：${state.speakingBank.title || state.speakingBank.season || "Speaking Bank"}`);
+    showToast(
+      persisted
+        ? `AI 已覆盖导入当季口语题库：${state.speakingBank.title || state.speakingBank.season || "Speaking Bank"}`
+        : "AI 题库已生成并下载，但本地保存失败。",
+      persisted ? "success" : "warning",
+    );
   } catch (error) {
     els.speakingBankStatus.textContent = previousStatus || "未导入题库";
-    alert(`AI 导入口语题库失败：${error.message || error}`);
+    showToast(`AI 导入口语题库失败：${error.message || error}`, "error");
   } finally {
     els.speakingBankAiInput.value = "";
   }
@@ -740,24 +750,24 @@ ${JSON.stringify(extractedPages, null, 2)}`,
 
 async function loadSpeakingBank() {
   try {
-    const bundledId = localStorage.getItem(SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY);
+    const bundledId = safeGetStorage(localStorage, SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY, "");
     if (bundledId !== BUNDLED_SPEAKING_BANK_ID) {
       const bundledSource = await loadBundledSpeakingBank();
       if (bundledSource) {
         const bundledBank = normalizeSpeakingBank(bundledSource);
         state.speakingBank = bundledBank;
-        localStorage.setItem(SPEAKING_BANK_STORAGE_KEY, JSON.stringify(bundledBank));
-        localStorage.setItem(SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY, BUNDLED_SPEAKING_BANK_ID);
+        safeSetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, JSON.stringify(bundledBank));
+        safeSetStorage(localStorage, SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY, BUNDLED_SPEAKING_BANK_ID);
         renderSpeakingBankStatus();
         return;
       }
     }
-    const saved = window.IeltsCore.parseSafeJson(localStorage.getItem(SPEAKING_BANK_STORAGE_KEY) || "null");
+    const saved = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, "null"));
     state.speakingBank = saved ? normalizeSpeakingBank(saved) : null;
   } catch (error) {
     console.warn("Speaking bank could not be loaded.", error);
     try {
-      const saved = window.IeltsCore.parseSafeJson(localStorage.getItem(SPEAKING_BANK_STORAGE_KEY) || "null");
+      const saved = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, "null"));
       state.speakingBank = saved ? normalizeSpeakingBank(saved) : null;
     } catch {
       state.speakingBank = null;
@@ -838,7 +848,7 @@ function normalizeSpeakingPart3(items) {
 
 async function addRandomSpeakingFromBank() {
   if (!state.speakingBank) {
-    alert("请先导入当季口语题库 JSON。");
+    showToast("请先导入当季口语题库 JSON。", "warning");
     return;
   }
   const mode = document.querySelector("input[name='libraryMode']:checked")?.value || "single";
@@ -1342,10 +1352,10 @@ async function clearLocalExamData() {
   state.pendingTest = null;
   state.pendingSource = "";
   state.assets.clear();
-  localStorage.removeItem(LIBRARY_STORAGE_KEY);
-  localStorage.removeItem("ielts-mock-history");
-  localStorage.removeItem(SPEAKING_BANK_STORAGE_KEY);
-  localStorage.removeItem(SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY);
+  safeRemoveStorage(localStorage, LIBRARY_STORAGE_KEY);
+  safeRemoveStorage(localStorage, "ielts-mock-history");
+  safeRemoveStorage(localStorage, SPEAKING_BANK_STORAGE_KEY);
+  safeRemoveStorage(localStorage, SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY);
   await clearAssetDb();
   state.speakingBank = null;
   els.jsonInput.value = "";
@@ -1364,7 +1374,7 @@ async function generateExamWithAi() {
   const questionText = els.aiQuestionText.value.trim();
   const answerText = els.aiAnswerText.value.trim();
   if (!files.length && !questionText && !answerText) {
-    alert("请先上传材料，或粘贴题目/答案文本。");
+    showToast("请先上传材料，或粘贴题目/答案文本。", "warning");
     return;
   }
 
@@ -3488,7 +3498,7 @@ async function handleJsonInput(event) {
     state.pendingTest = null;
     state.pendingSource = "";
     renderPendingTest();
-    alert(`JSON 无法读取：${error.message}`);
+    showToast(`JSON 无法读取：${error.message}`, "error");
   }
 }
 
@@ -3569,7 +3579,7 @@ function revokeAssetMap(assets) {
 async function confirmPendingTest() {
   const tests = Array.isArray(state.pendingTest) ? state.pendingTest : [];
   if (!tests.length) {
-    alert("请先导入题目 JSON。");
+    showToast("请先导入题目 JSON。", "warning");
     return;
   }
   try {
@@ -3583,7 +3593,7 @@ async function confirmPendingTest() {
     clearPendingTest(false);
     resetAssetPicker(false);
   } catch (error) {
-    alert(`题目格式有问题：${error.message}`);
+    showToast(`题目格式有问题：${error.message}`, "error");
   }
 }
 
@@ -3624,13 +3634,13 @@ function renderPendingTest() {
 
 function toggleLibraryCollapsed() {
   state.libraryCollapsed = !state.libraryCollapsed;
-  localStorage.setItem(LIBRARY_COLLAPSED_STORAGE_KEY, String(state.libraryCollapsed));
+  safeSetStorage(localStorage, LIBRARY_COLLAPSED_STORAGE_KEY, String(state.libraryCollapsed));
   renderLibrary();
 }
 
 function toggleHistoryCollapsed() {
   state.historyCollapsed = !state.historyCollapsed;
-  localStorage.setItem(HISTORY_COLLAPSED_STORAGE_KEY, String(state.historyCollapsed));
+  safeSetStorage(localStorage, HISTORY_COLLAPSED_STORAGE_KEY, String(state.historyCollapsed));
   renderHistoryList();
 }
 
@@ -3785,7 +3795,7 @@ function renderLibrary() {
       if (entry) {
         const missingAssets = getMissingAssetRefs(entry);
         if (missingAssets.length) {
-          alert(`这套题缺少音频/图片资源：${missingAssets.slice(0, 5).join(", ")}。请重新选择对应资源后再开始。`);
+          showToast(`这套题缺少音频/图片资源：${missingAssets.slice(0, 5).join(", ")}。请重新选择对应资源后再开始。`, "warning");
           return;
         }
         state.currentLibraryEntryId = entry.id;
@@ -3803,7 +3813,7 @@ function renderLibrary() {
       if (nextTitle === null) return;
       const trimmed = nextTitle.trim();
       if (!trimmed) {
-        alert("名字不能为空。");
+        showToast("名字不能为空。", "warning");
         return;
       }
       entry.test.title = trimmed;
@@ -3881,13 +3891,13 @@ function startFullMockFromSelection() {
   const selected = getFullMockSelection();
   const missingType = selected.find((item) => !item.entry)?.testType;
   if (missingType) {
-    alert(`请选择 ${getTestTypeLabel(missingType)} 考试单元。`);
+    showToast(`请选择 ${getTestTypeLabel(missingType)} 考试单元。`, "warning");
     return;
   }
   const missingAssetsEntry = selected.find((item) => getMissingAssetRefs(item.entry).length);
   if (missingAssetsEntry) {
     const missingAssets = getMissingAssetRefs(missingAssetsEntry.entry);
-    alert(`${getTestTypeLabel(missingAssetsEntry.testType)} 缺少音频/图片资源：${missingAssets.slice(0, 5).join(", ")}。请先绑定资源。`);
+    showToast(`${getTestTypeLabel(missingAssetsEntry.testType)} 缺少音频/图片资源：${missingAssets.slice(0, 5).join(", ")}。请先绑定资源。`, "warning");
     return;
   }
   state.mode = "mock";
@@ -3906,7 +3916,7 @@ function startFullMockCurrentUnit() {
   const entryId = state.fullMock.queue[state.fullMock.index];
   const entry = state.library.find((item) => item.id === entryId);
   if (!entry) {
-    alert("全科模考单元不存在，请重新选择。");
+    showToast("全科模考单元不存在，请重新选择。", "error");
     resetFullMockState();
     returnToSetup(true);
     return;
@@ -3952,12 +3962,14 @@ function setLocalStorageWithQuota(key, value) {
   if (text.length > 4_500_000) {
     throw new Error("单项本地存储超过 4.5MB 配额。");
   }
-  localStorage.setItem(key, text);
+  if (!safeSetStorage(localStorage, key, text)) {
+    throw new Error("本地存储不可用。");
+  }
 }
 
 async function loadLibrary() {
   try {
-    const saved = window.IeltsCore.parseSafeJson(localStorage.getItem(LIBRARY_STORAGE_KEY) || "[]");
+    const saved = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, LIBRARY_STORAGE_KEY, "[]"));
     const loaded = [];
     for (const entry of (Array.isArray(saved) ? saved : [])) {
       if (!entry?.test) continue;
@@ -4509,7 +4521,7 @@ function canSwitchToSection(index) {
   if (state.test?.testType !== "listening" || state.mode !== "mock") return true;
   const audioActive = !els.audioPlayer.paused && !els.audioPlayer.ended;
   if (audioActive && state.activeAudioSectionIndex !== null && index !== state.activeAudioSectionIndex) {
-    alert("模考模式下听力音频播放期间不能切换 Part。请等当前音频播放结束后再切换。");
+    showToast("模考模式下听力音频播放期间不能切换 Part。请等当前音频播放结束后再切换。", "warning");
     return false;
   }
   return true;
@@ -4871,7 +4883,7 @@ function handleAnswerInput(event) {
     const checked = Array.from(document.querySelectorAll(`input[name="q_${selectorValue(id)}"]:checked`));
     if (checked.length > max) {
       input.checked = false;
-      alert(`这道题最多选择 ${max} 项。`);
+      showToast(`这道题最多选择 ${max} 项。`, "warning");
     }
     state.answers[id] = Array.from(document.querySelectorAll(`input[name="q_${selectorValue(id)}"]:checked`)).map((item) => item.value);
   } else if (input.type === "radio") {
@@ -5038,7 +5050,7 @@ function setupAudioGuards() {
   els.audioPlayer.addEventListener("error", () => {
     if (state.test?.testType !== "listening" || state.submitted) return;
     state.activeAudioSectionIndex = null;
-    alert("音频加载失败。请回到主页面重新绑定对应音频文件。");
+    showToast("音频加载失败。请回到主页面重新绑定对应音频文件。", "error");
   });
   els.audioPlayer.addEventListener("loadedmetadata", updateAudioClock);
 }
@@ -5051,9 +5063,9 @@ function maybeStartListeningReviewCountdown(force = false) {
   state.listeningReviewStarted = true;
   state.remainingSeconds = 180;
   updateTimer();
-  alert(allEnded
+  showToast(allEnded
     ? "听力音频已播放结束。你还有 3 分钟检查答案，时间到后将自动交卷。"
-    : "考试时间已到。你还有 3 分钟检查答案，时间到后将自动交卷。");
+    : "考试时间已到。你还有 3 分钟检查答案，时间到后将自动交卷。", "warning");
 }
 
 function getListeningAudioKeys() {
@@ -5093,7 +5105,7 @@ async function toggleSpeakingRecording(sectionKey) {
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-    alert("当前浏览器不支持录音。可以先在文本框里输入转写/笔记。");
+    showToast("当前浏览器不支持录音。可以先在文本框里输入转写/笔记。", "warning");
     return;
   }
   stopSpeakingRecording(true);
@@ -5126,7 +5138,7 @@ async function toggleSpeakingRecording(sectionKey) {
     state.speakingRecorder.start();
     renderExam();
   } catch (error) {
-    alert(`无法开始录音：${error.message || error}`);
+    showToast(`无法开始录音：${error.message || error}`, "error");
   }
 }
 
@@ -5151,7 +5163,7 @@ function revokeSpeakingRecordings() {
 async function submitTest(auto) {
   if (!state.test || state.submitted) return;
   if (state.test.testType === "speaking" && state.speakingRecordingSection !== null) {
-    alert("请先停止当前口语录音，再交卷。");
+    showToast("请先停止当前口语录音，再交卷。", "warning");
     return;
   }
   if (!auto && state.mode === "mock") {
@@ -5186,7 +5198,7 @@ function continueFullMock(result) {
   if (nextIndex < state.fullMock.queue.length) {
     state.fullMock.index = nextIndex;
     const nextEntry = state.library.find((item) => item.id === state.fullMock.queue[nextIndex]);
-    alert(`${getTestTypeLabel(result.testType)} 已完成。接下来进入 ${getTestTypeLabel(nextEntry?.test?.testType)}。`);
+    showToast(`${getTestTypeLabel(result.testType)} 已完成。接下来进入 ${getTestTypeLabel(nextEntry?.test?.testType)}。`, "success");
     startFullMockCurrentUnit();
     return;
   }
@@ -5546,7 +5558,7 @@ function renderHistoryList() {
 
 function safeLoadHistory() {
   try {
-    const history = window.IeltsCore.parseSafeJson(localStorage.getItem("ielts-mock-history") || "[]");
+    const history = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, "ielts-mock-history", "[]"));
     return Array.isArray(history) ? history : [];
   } catch (error) {
     console.warn("History could not be loaded.", error);
@@ -6004,7 +6016,7 @@ function openResultDialog() {
 
 function returnToSetup(skipConfirm = false) {
   if (state.fullMock.active && !skipConfirm) {
-    alert("全科模考进行中，需要完成四个考试单元后才能退出。");
+    showToast("全科模考进行中，需要完成四个考试单元后才能退出。", "warning");
     return;
   }
   if (!els.exam.hidden && !state.submitted) {

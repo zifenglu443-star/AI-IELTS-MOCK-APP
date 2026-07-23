@@ -197,6 +197,11 @@ button:disabled {
   background: #fff8f8;
 }
 
+.app-toast-success {
+  border-color: #acd7bc;
+  background: #f5fff8;
+}
+
 .app-toast-warning {
   border-color: #e6cf99;
   background: #fffaf0;
