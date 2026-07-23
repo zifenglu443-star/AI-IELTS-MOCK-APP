@@ -37,6 +37,12 @@ npm install
 npm start
 ```
 
+Electron 二进制会在安装阶段下载并校验。GitHub 下载较慢时，可使用镜像；文件仍会按 Electron 包内置的 SHA-256 校验：
+
+```bash
+ELECTRON_MIRROR=https://repo.huaweicloud.com/electron/ npm install
+```
+
 打包 macOS App：
 
 ```bash

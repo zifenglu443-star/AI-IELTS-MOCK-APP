@@ -5,6 +5,7 @@
   "author": "IELTS Mock Lab",
   "main": "main.js",
   "scripts": {
+    "postinstall": "node tools/prepare-electron.js",
     "start": "electron .",
     "check": "node --check app.js && node --check main.js && node --check preload.js && node --check src/core/security.js && node --check tools/validate-exams.js && node tools/validate-exams.js exams/*.json && node --test tests/*.test.js",
     "test": "node --test tests/*.test.js",
@@ -12,8 +13,8 @@
     "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^31.7.7",
-    "electron-builder": "^24.13.3"
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.ieltsmock.lab",
@@ -22,12 +23,13 @@
     "files": [
       "index.html",
       "app.js",
+      "pdfjs-loader.js",
       "styles.css",
       "main.js",
       "preload.js",
       "src/**/*",
-      "node_modules/pdfjs-dist/build/pdf.min.js",
-      "node_modules/pdfjs-dist/build/pdf.worker.min.js",
+      "node_modules/pdfjs-dist/legacy/build/pdf.min.mjs",
+      "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
       "assets/**/*",
       "exams/**/*",
       "speaking-banks/**/*",
@@ -41,6 +43,13 @@
     }
   },
   "dependencies": {
-    "pdfjs-dist": "^3.11.174"
+    "pdfjs-dist": "^6.1.200"
+  },
+  "allowScripts": {
+    "electron@43.2.0": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "overrides": {
+    "brace-expansion@<1.1.16": "1.1.16"
   }
 }

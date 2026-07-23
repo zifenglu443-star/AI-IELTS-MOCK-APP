@@ -106,7 +106,7 @@ const els = {
 const OCR_PDF_PAGE_BATCH_SIZE = 5;
 const AI_REQUEST_TIMEOUT_MS = 120000;
 const AI_PDF_RENDER_MAX_WIDTH = 1500;
-const PDFJS_WORKER_SRC = "./node_modules/pdfjs-dist/build/pdf.worker.min.js";
+const PDFJS_WORKER_SRC = "./node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs";
 const LIBRARY_STORAGE_KEY = "ielts-mock-library";
 const LIBRARY_COLLAPSED_STORAGE_KEY = "ielts-mock-library-collapsed";
 const HISTORY_COLLAPSED_STORAGE_KEY = "ielts-mock-history-collapsed";
@@ -630,6 +630,25 @@ function showToast(message, type = "info") {
     els.toastRegion.firstElementChild?.remove();
   }
   window.setTimeout(() => toast.remove(), 6000);
+}
+
+async function requirePdfJs() {
+  const pdfjsLib = window.pdfjsLib || await window.pdfjsReady;
+  if (!pdfjsLib) {
+    throw new Error("PDF.js 未加载。请重新安装依赖后再试。");
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+  return pdfjsLib;
+}
+
+async function destroyPdfLoadingTask(loadingTask) {
+  try {
+    if (typeof loadingTask?.destroy === "function") {
+      await loadingTask.destroy();
+    }
+  } catch (error) {
+    console.warn("PDF.js cleanup failed.", error);
+  }
 }
 
 function updateLibraryModeHint() {
@@ -1626,13 +1645,11 @@ function isAnswerMaterial(file) {
 }
 
 async function renderPdfFileToImages(file, maxPages, role = "PDF", startPage = 1) {
-  if (!window.pdfjsLib) {
-    throw new Error("PDF.js 未加载，无法读取扫描版 PDF。请确认应用文件完整，或把 PDF 页面导出成图片上传。");
-  }
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+  const pdfjsLib = await requirePdfJs();
   const buffer = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data: buffer, isEvalSupported: false });
   try {
+    const pdf = await loadingTask.promise;
     const pageCount = Math.min(pdf.numPages, startPage + maxPages - 1);
     const pages = [];
     for (let pageNumber = startPage; pageNumber <= pageCount; pageNumber += 1) {
@@ -1668,21 +1685,19 @@ async function renderPdfFileToImages(file, maxPages, role = "PDF", startPage = 1
     }
     return pages;
   } finally {
-    await pdf.destroy();
+    await destroyPdfLoadingTask(loadingTask);
   }
 }
 
 async function getPdfPageCount(file) {
-  if (!window.pdfjsLib) {
-    throw new Error("PDF.js 未加载，无法读取 PDF 页数。请确认应用文件完整。");
-  }
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+  const pdfjsLib = await requirePdfJs();
   const buffer = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data: buffer, isEvalSupported: false });
   try {
+    const pdf = await loadingTask.promise;
     return pdf.numPages;
   } finally {
-    await pdf.destroy();
+    await destroyPdfLoadingTask(loadingTask);
   }
 }
 
@@ -1996,10 +2011,11 @@ async function renderPdfPageForCrop(material, crop) {
     return !sourceText || names.some((name) => name.includes(sourceText) || sourceText.includes(name));
   });
   if (!pdfInput?.file) return null;
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+  const pdfjsLib = await requirePdfJs();
   const buffer = await pdfInput.file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+  const loadingTask = pdfjsLib.getDocument({ data: buffer, isEvalSupported: false });
   try {
+    const pdf = await loadingTask.promise;
     const pageNumber = Math.min(Math.max(1, page), pdf.numPages);
     const pdfPage = await pdf.getPage(pageNumber);
     const baseViewport = pdfPage.getViewport({ scale: 1 });
@@ -2024,7 +2040,7 @@ async function renderPdfPageForCrop(material, crop) {
       pageNumber,
     };
   } finally {
-    await pdf.destroy();
+    await destroyPdfLoadingTask(loadingTask);
   }
 }
 
@@ -5801,21 +5817,24 @@ async function extractListeningTranscriptTextFromBlob(blob, ref, box) {
 }
 
 async function extractTextFromPdfBlob(blob, name = "PDF") {
-  if (!window.pdfjsLib) {
-    throw new Error("PDF.js 未加载，无法读取听力原文 PDF。");
-  }
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+  const pdfjsLib = await requirePdfJs();
   const buffer = await blob.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
-  const pages = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    throwIfAiAborted();
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const text = content.items.map((item) => item.str || "").join(" ").replace(/\s+/g, " ").trim();
-    if (text) pages.push(`--- ${name} page ${pageNumber} ---\n${text}`);
+  const loadingTask = pdfjsLib.getDocument({ data: buffer, isEvalSupported: false });
+  try {
+    const pdf = await loadingTask.promise;
+    const pages = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      throwIfAiAborted();
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const text = content.items.map((item) => item.str || "").join(" ").replace(/\s+/g, " ").trim();
+      page.cleanup();
+      if (text) pages.push(`--- ${name} page ${pageNumber} ---\n${text}`);
+    }
+    return pages.join("\n\n").trim();
+  } finally {
+    await destroyPdfLoadingTask(loadingTask);
   }
-  return pages.join("\n\n").trim();
 }
 
 function getListeningTranscriptFileRefs(item, test) {
