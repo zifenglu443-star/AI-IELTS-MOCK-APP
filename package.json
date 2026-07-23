@@ -1,0 +1,46 @@
+{
+  "name": "ielts-mock-lab",
+  "version": "1.0.0",
+  "description": "IELTS listening, reading, writing, and speaking mock exam desktop app.",
+  "author": "IELTS Mock Lab",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check app.js && node --check main.js && node --check preload.js && node --check src/core/security.js && node --check tools/validate-exams.js && node tools/validate-exams.js exams/*.json && node --test tests/*.test.js",
+    "test": "node --test tests/*.test.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.ieltsmock.lab",
+    "productName": "IELTS Mock Lab",
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "index.html",
+      "app.js",
+      "styles.css",
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "node_modules/pdfjs-dist/build/pdf.min.js",
+      "node_modules/pdfjs-dist/build/pdf.worker.min.js",
+      "assets/**/*",
+      "exams/**/*",
+      "speaking-banks/**/*",
+      "README.md"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        "zip"
+      ]
+    }
+  },
+  "dependencies": {
+    "pdfjs-dist": "^3.11.174"
+  }
+}

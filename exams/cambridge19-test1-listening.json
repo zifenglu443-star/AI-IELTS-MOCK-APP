@@ -1,0 +1,344 @@
+{
+  "testType": "listening",
+  "title": "Cambridge IELTS 19 Test 1 - Listening",
+  "durationMinutes": 30,
+  "sections": [
+    {
+      "title": "Part 1",
+      "audio": "Momoo_zvDf - 19_Test1 Part1.mp3",
+      "groups": [
+        {
+          "title": "Questions 1-10",
+          "instructions": "Complete the notes below. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "questionType": "blank",
+          "questions": [
+            { "id": 1, "text": "Hinchingbrooke Country Park - Area: ____ hectares", "answer": ["69", "sixty-nine", "sixty nine"] },
+            { "id": 2, "text": "Wetland: lakes, ponds and a ____", "answer": ["stream"] },
+            { "id": 3, "text": "Science: Children look at ____ about plants, etc.", "answer": ["data"] },
+            { "id": 4, "text": "Geography: includes learning to use a ____ and compass", "answer": ["map"] },
+            { "id": 5, "text": "Leisure and tourism: mostly concentrates on the park's ____", "answer": ["visitors"] },
+            { "id": 6, "text": "Music: Children make ____ with natural materials, and experiment with rhythm and speed.", "answer": ["sounds"] },
+            { "id": 7, "text": "They give children a feeling of ____ that they may not have elsewhere.", "answer": ["freedom"] },
+            { "id": 8, "text": "Children learn new ____ and gain self-confidence.", "answer": ["skills"] },
+            { "id": 9, "text": "Cost per child: £ ____", "answer": ["4.95"] },
+            { "id": 10, "text": "Adults, such as ____ free", "answer": ["leaders"] }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Part 2",
+      "audio": "Momoo_zvDf - 19_Test1 Part2.mp3",
+      "groups": [
+        {
+          "title": "Questions 11-15",
+          "instructions": "Choose the correct letter, A, B or C.",
+          "questionType": "single_choice",
+          "questions": [
+            {
+              "id": 11,
+              "text": "During the visit to Malatte, in France, members especially enjoyed",
+              "options": [
+                { "value": "A", "label": "going to a theme park." },
+                { "value": "B", "label": "experiencing a river trip." },
+                { "value": "C", "label": "visiting a cheese factory." }
+              ],
+              "answer": ["B"]
+            },
+            {
+              "id": 12,
+              "text": "What will happen in Stanthorpe to mark the 25th anniversary of the Twinning Association?",
+              "options": [
+                { "value": "A", "label": "A tree will be planted." },
+                { "value": "B", "label": "A garden seat will be bought." },
+                { "value": "C", "label": "A footbridge will be built." }
+              ],
+              "answer": ["A"]
+            },
+            {
+              "id": 13,
+              "text": "Which event raised most funds this year?",
+              "options": [
+                { "value": "A", "label": "the film show" },
+                { "value": "B", "label": "the pancake evening" },
+                { "value": "C", "label": "the cookery demonstration" }
+              ],
+              "answer": ["B"]
+            },
+            {
+              "id": 14,
+              "text": "For the first evening with the French visitors host families are advised to",
+              "options": [
+                { "value": "A", "label": "take them for a walk round the town." },
+                { "value": "B", "label": "go to a local restaurant." },
+                { "value": "C", "label": "have a meal at home." }
+              ],
+              "answer": ["C"]
+            },
+            {
+              "id": 15,
+              "text": "On Saturday evening there will be the chance to",
+              "options": [
+                { "value": "A", "label": "listen to a concert." },
+                { "value": "B", "label": "watch a match." },
+                { "value": "C", "label": "take part in a competition." }
+              ],
+              "answer": ["A"]
+            }
+          ]
+        },
+        {
+          "title": "Questions 16-20",
+          "instructions": "Label the map below. Write the correct letter, A-H, next to Questions 16-20.",
+          "questionType": "single_choice",
+          "image": "assets/cambridge19-test1-farley-house-map.png",
+          "questions": [
+            {
+              "id": 16,
+              "text": "Farm shop",
+              "options": [
+                { "value": "A", "label": "A" },
+                { "value": "B", "label": "B" },
+                { "value": "C", "label": "C" },
+                { "value": "D", "label": "D" },
+                { "value": "E", "label": "E" },
+                { "value": "F", "label": "F" },
+                { "value": "G", "label": "G" },
+                { "value": "H", "label": "H" }
+              ],
+              "answer": ["G"]
+            },
+            {
+              "id": 17,
+              "text": "Disabled entry",
+              "options": [
+                { "value": "A", "label": "A" },
+                { "value": "B", "label": "B" },
+                { "value": "C", "label": "C" },
+                { "value": "D", "label": "D" },
+                { "value": "E", "label": "E" },
+                { "value": "F", "label": "F" },
+                { "value": "G", "label": "G" },
+                { "value": "H", "label": "H" }
+              ],
+              "answer": ["C"]
+            },
+            {
+              "id": 18,
+              "text": "Adventure playground",
+              "options": [
+                { "value": "A", "label": "A" },
+                { "value": "B", "label": "B" },
+                { "value": "C", "label": "C" },
+                { "value": "D", "label": "D" },
+                { "value": "E", "label": "E" },
+                { "value": "F", "label": "F" },
+                { "value": "G", "label": "G" },
+                { "value": "H", "label": "H" }
+              ],
+              "answer": ["B"]
+            },
+            {
+              "id": 19,
+              "text": "Kitchen gardens",
+              "options": [
+                { "value": "A", "label": "A" },
+                { "value": "B", "label": "B" },
+                { "value": "C", "label": "C" },
+                { "value": "D", "label": "D" },
+                { "value": "E", "label": "E" },
+                { "value": "F", "label": "F" },
+                { "value": "G", "label": "G" },
+                { "value": "H", "label": "H" }
+              ],
+              "answer": ["D"]
+            },
+            {
+              "id": 20,
+              "text": "The Temple of the Four Winds",
+              "options": [
+                { "value": "A", "label": "A" },
+                { "value": "B", "label": "B" },
+                { "value": "C", "label": "C" },
+                { "value": "D", "label": "D" },
+                { "value": "E", "label": "E" },
+                { "value": "F", "label": "F" },
+                { "value": "G", "label": "G" },
+                { "value": "H", "label": "H" }
+              ],
+              "answer": ["A"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Part 3",
+      "audio": "Momoo_zvDf - 19_Test1 Part3.mp3",
+      "groups": [
+        {
+          "title": "Questions 21 and 22",
+          "instructions": "Choose TWO letters, A-E.",
+          "questionType": "multi_choice",
+          "maxChoices": 2,
+          "questions": [
+            {
+              "id": "21-22",
+              "points": 2,
+              "text": "Which TWO things did Colin find most satisfying about his bread reuse project?",
+              "options": [
+                { "value": "A", "label": "receiving support from local restaurants" },
+                { "value": "B", "label": "finding a good way to prevent waste" },
+                { "value": "C", "label": "overcoming problems in a basic process" },
+                { "value": "D", "label": "experimenting with designs and colours" },
+                { "value": "E", "label": "learning how to apply 3-D printing" }
+              ],
+              "answer": ["B", "D"]
+            }
+          ]
+        },
+        {
+          "title": "Questions 23 and 24",
+          "instructions": "Choose TWO letters, A-E.",
+          "questionType": "multi_choice",
+          "maxChoices": 2,
+          "questions": [
+            {
+              "id": "23-24",
+              "points": 2,
+              "text": "Which TWO ways do the students agree that touch-sensitive sensors for food labels could be developed in future?",
+              "options": [
+                { "value": "A", "label": "for use on medical products" },
+                { "value": "B", "label": "to show that food is no longer fit to eat" },
+                { "value": "C", "label": "for use with drinks as well as foods" },
+                { "value": "D", "label": "to provide applications for blind people" },
+                { "value": "E", "label": "to indicate the weight of certain foods" }
+              ],
+              "answer": ["A", "E"]
+            }
+          ]
+        },
+        {
+          "title": "Questions 25-30",
+          "instructions": "What is the students' opinion about each of the following food trends? Choose the correct letter, A-H.",
+          "questionType": "single_choice",
+          "questions": [
+            {
+              "id": 25,
+              "text": "Use of local products",
+              "options": [
+                { "value": "A", "label": "This is only relevant to young people." },
+                { "value": "B", "label": "This may have disappointing results." },
+                { "value": "C", "label": "This already seems to be widespread." },
+                { "value": "D", "label": "Retailers should do more to encourage this." },
+                { "value": "E", "label": "More financial support is needed for this." },
+                { "value": "F", "label": "Most people know little about this." },
+                { "value": "G", "label": "There should be stricter regulations about this." },
+                { "value": "H", "label": "This could be dangerous." }
+              ],
+              "answer": ["D"]
+            },
+            {
+              "id": 26,
+              "text": "Reduction in unnecessary packaging",
+              "options": [
+                { "value": "A", "label": "This is only relevant to young people." },
+                { "value": "B", "label": "This may have disappointing results." },
+                { "value": "C", "label": "This already seems to be widespread." },
+                { "value": "D", "label": "Retailers should do more to encourage this." },
+                { "value": "E", "label": "More financial support is needed for this." },
+                { "value": "F", "label": "Most people know little about this." },
+                { "value": "G", "label": "There should be stricter regulations about this." },
+                { "value": "H", "label": "This could be dangerous." }
+              ],
+              "answer": ["G"]
+            },
+            {
+              "id": 27,
+              "text": "Gluten-free and lactose-free food",
+              "options": [
+                { "value": "A", "label": "This is only relevant to young people." },
+                { "value": "B", "label": "This may have disappointing results." },
+                { "value": "C", "label": "This already seems to be widespread." },
+                { "value": "D", "label": "Retailers should do more to encourage this." },
+                { "value": "E", "label": "More financial support is needed for this." },
+                { "value": "F", "label": "Most people know little about this." },
+                { "value": "G", "label": "There should be stricter regulations about this." },
+                { "value": "H", "label": "This could be dangerous." }
+              ],
+              "answer": ["C"]
+            },
+            {
+              "id": 28,
+              "text": "Use of branded products related to celebrity chefs",
+              "options": [
+                { "value": "A", "label": "This is only relevant to young people." },
+                { "value": "B", "label": "This may have disappointing results." },
+                { "value": "C", "label": "This already seems to be widespread." },
+                { "value": "D", "label": "Retailers should do more to encourage this." },
+                { "value": "E", "label": "More financial support is needed for this." },
+                { "value": "F", "label": "Most people know little about this." },
+                { "value": "G", "label": "There should be stricter regulations about this." },
+                { "value": "H", "label": "This could be dangerous." }
+              ],
+              "answer": ["B"]
+            },
+            {
+              "id": 29,
+              "text": "Development of 'ghost kitchens' for takeaway food",
+              "options": [
+                { "value": "A", "label": "This is only relevant to young people." },
+                { "value": "B", "label": "This may have disappointing results." },
+                { "value": "C", "label": "This already seems to be widespread." },
+                { "value": "D", "label": "Retailers should do more to encourage this." },
+                { "value": "E", "label": "More financial support is needed for this." },
+                { "value": "F", "label": "Most people know little about this." },
+                { "value": "G", "label": "There should be stricter regulations about this." },
+                { "value": "H", "label": "This could be dangerous." }
+              ],
+              "answer": ["F"]
+            },
+            {
+              "id": 30,
+              "text": "Use of mushrooms for common health concerns",
+              "options": [
+                { "value": "A", "label": "This is only relevant to young people." },
+                { "value": "B", "label": "This may have disappointing results." },
+                { "value": "C", "label": "This already seems to be widespread." },
+                { "value": "D", "label": "Retailers should do more to encourage this." },
+                { "value": "E", "label": "More financial support is needed for this." },
+                { "value": "F", "label": "Most people know little about this." },
+                { "value": "G", "label": "There should be stricter regulations about this." },
+                { "value": "H", "label": "This could be dangerous." }
+              ],
+              "answer": ["H"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Part 4",
+      "audio": "Momoo_zvDf - 19_Test1 Part4.mp3",
+      "groups": [
+        {
+          "title": "Questions 31-40",
+          "instructions": "Complete the notes below. Write ONE WORD ONLY for each answer.",
+          "questionType": "blank",
+          "questions": [
+            { "id": 31, "text": "In the 1930s, a local teacher realised that stones beneath the bog surface were once ____.", "answer": ["walls"] },
+            { "id": 32, "text": "His ____ became an archaeologist and undertook an investigation of the site.", "answer": ["son"] },
+            { "id": 33, "text": "A traditional method used by local people to dig for ____ was used to identify where stones were located.", "answer": ["fuel"] },
+            { "id": 34, "text": "Items are well preserved in the bog because of a lack of ____.", "answer": ["oxygen"] },
+            { "id": 35, "text": "Houses were ____ in shape and had a hole in the roof.", "answer": ["rectangular"] },
+            { "id": 36, "text": "Pots were used for storage and to make ____.", "answer": ["lamps"] },
+            { "id": 37, "text": "Each field at Ceide was large enough to support a big ____.", "answer": ["family"] },
+            { "id": 38, "text": "No evidence of structures to house animals during ____.", "answer": ["winter"] },
+            { "id": 39, "text": "A decline in ____ quality.", "answer": ["soil"] },
+            { "id": 40, "text": "An increase in ____.", "answer": ["rain"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

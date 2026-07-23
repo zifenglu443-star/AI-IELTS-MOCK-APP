@@ -1,0 +1,10 @@
+node_modules/
+dist/
+tmp/
+samples/
+.DS_Store
+*.zip
+/ielts-mock-lab-web-demo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
