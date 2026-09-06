@@ -368,7 +368,7 @@ async function libraryRoutes(req, res, pathname, auth) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,coalesce($8::timestamptz,now()))
        ON CONFLICT (user_id,id) DO UPDATE SET version=library_entries.version+1,title=excluded.title,test_type=excluded.test_type,source=excluded.source,test_json=excluded.test_json,generated_assets=excluded.generated_assets,updated_at=now()
        RETURNING *`,
-      [id, auth.user.id, String(test.title || body.title || ""), String(test.testType || body.testType || ""), String(body.source || ""), test, body.generatedAssets || [], body.importedAt || null],
+      [id, auth.user.id, String(test.title || body.title || ""), String(test.testType || body.testType || ""), String(body.source || ""), test, JSON.stringify(body.generatedAssets || []), body.importedAt || null],
     )).rows[0];
     return sendJson(res, 200, { entry: libraryRow(row) });
   }
@@ -465,7 +465,7 @@ async function attemptRoutes(req, res, pathname, auth) {
     const expired = current.mode === "mock" && current.deadline_at && new Date(current.deadline_at).getTime() < Date.now();
     const row = (await pool.query(
       "UPDATE attempts SET status=$3,result_json=$4,answers=$5,review_ids=$6,submitted_at=now(),version=version+1,lease_token_hash=null,lease_expires_at=null,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *",
-      [submit[1], auth.user.id, expired ? "expired" : "submitted", body.result || {}, body.answers || current.answers, body.reviewIds || current.review_ids],
+      [submit[1], auth.user.id, expired ? "expired" : "submitted", body.result || {}, body.answers || current.answers, JSON.stringify(body.reviewIds || current.review_ids)],
     )).rows[0];
     return sendJson(res, 200, { attempt: attemptRow(row) });
   }
@@ -506,7 +506,7 @@ async function attemptRoutes(req, res, pathname, auth) {
       `UPDATE attempts SET answers=$3,review_ids=$4,current_question_id=$5,current_section_index=$6,audio_state=$7,full_mock_state=$8,
        remaining_seconds=$9,status=$10,paused_at=CASE WHEN $10='paused' THEN now() ELSE null END,version=version+1,
        deadline_at=$11,lease_expires_at=now()+interval '90 seconds',updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *`,
-      [match[1], auth.user.id, body.answers || {}, body.reviewIds || [], body.currentQuestionId || null, Number(body.currentSectionIndex || 0), body.audioState || {}, body.fullMockState || {}, Number(body.remainingSeconds ?? current.remaining_seconds), status, requestedDeadline],
+      [match[1], auth.user.id, body.answers || {}, JSON.stringify(body.reviewIds || []), body.currentQuestionId || null, Number(body.currentSectionIndex || 0), body.audioState || {}, body.fullMockState || {}, Number(body.remainingSeconds ?? current.remaining_seconds), status, requestedDeadline],
     )).rows[0];
     return sendJson(res, 200, { attempt: attemptRow(row) });
   }
@@ -542,7 +542,7 @@ async function fileRoutes(req, res, pathname, auth) {
       if (error.code !== "EEXIST") throw error;
     });
     const received = Array.from(new Set([...(upload.received_chunks || []), index])).sort((a, b) => a - b);
-    await pool.query("UPDATE upload_sessions SET received_chunks=$2 WHERE id=$1", [upload.id, received]);
+    await pool.query("UPDATE upload_sessions SET received_chunks=$2 WHERE id=$1", [upload.id, JSON.stringify(received)]);
     return sendJson(res, 200, { received: received.length, total: upload.total_chunks });
   }
   const finalizeMatch = pathname.match(/^\/api\/files\/uploads\/([^/]+)\/complete$/);
@@ -887,7 +887,7 @@ async function backupRoutes(req, res, pathname, auth) {
       for (const entry of Array.isArray(body.library) ? body.library : []) {
         if (!entry?.test) continue;
         const id = newId("lib");
-        await client.query("INSERT INTO library_entries(id,user_id,title,test_type,source,test_json,generated_assets,imported_at) VALUES ($1,$2,$3,$4,$5,$6,$7,coalesce($8::timestamptz,now()))", [id, auth.user.id, String(entry.test.title || ""), String(entry.test.testType || ""), String(entry.source || "legacy"), entry.test, entry.generatedAssets || [], entry.importedAt || null]);
+        await client.query("INSERT INTO library_entries(id,user_id,title,test_type,source,test_json,generated_assets,imported_at) VALUES ($1,$2,$3,$4,$5,$6,$7,coalesce($8::timestamptz,now()))", [id, auth.user.id, String(entry.test.title || ""), String(entry.test.testType || ""), String(entry.source || "legacy"), entry.test, JSON.stringify(entry.generatedAssets || []), entry.importedAt || null]);
         importedLibrary += 1;
       }
       for (const item of Array.isArray(body.history) ? body.history : []) {
@@ -930,8 +930,8 @@ async function backupRoutes(req, res, pathname, auth) {
         row._restoredPath = relative;
       }
       await transaction(async (client) => {
-        for (const row of manifest.library || []) await client.query("INSERT INTO library_entries(id,user_id,title,test_type,source,test_json,generated_assets,imported_at) VALUES ($1,$2,$3,$4,$5,$6,$7,coalesce($8::timestamptz,now()))", [maps.library.get(row.id), auth.user.id, row.title, row.test_type, row.source, remapJsonIds(row.test_json, maps), remapJsonIds(row.generated_assets || [], maps), row.imported_at || null]);
-        for (const row of manifest.attempts || []) await client.query("INSERT INTO attempts(id,user_id,library_entry_id,test_snapshot,mode,status,idempotency_key,answers,review_ids,result_json,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", [maps.attempts.get(row.id), auth.user.id, maps.library.get(row.library_entry_id) || null, remapJsonIds(row.test_snapshot || {}, maps), row.mode === "practice" ? "practice" : "mock", ["submitted", "expired"].includes(row.status) ? row.status : "abandoned", `restore:${crypto.randomUUID()}`, remapJsonIds(row.answers || {}, maps), row.review_ids || [], remapJsonIds(row.result_json || null, maps), row.submitted_at || null]);
+        for (const row of manifest.library || []) await client.query("INSERT INTO library_entries(id,user_id,title,test_type,source,test_json,generated_assets,imported_at) VALUES ($1,$2,$3,$4,$5,$6,$7,coalesce($8::timestamptz,now()))", [maps.library.get(row.id), auth.user.id, row.title, row.test_type, row.source, remapJsonIds(row.test_json, maps), JSON.stringify(remapJsonIds(row.generated_assets || [], maps)), row.imported_at || null]);
+        for (const row of manifest.attempts || []) await client.query("INSERT INTO attempts(id,user_id,library_entry_id,test_snapshot,mode,status,idempotency_key,answers,review_ids,result_json,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", [maps.attempts.get(row.id), auth.user.id, maps.library.get(row.library_entry_id) || null, remapJsonIds(row.test_snapshot || {}, maps), row.mode === "practice" ? "practice" : "mock", ["submitted", "expired"].includes(row.status) ? row.status : "abandoned", `restore:${crypto.randomUUID()}`, remapJsonIds(row.answers || {}, maps), JSON.stringify(row.review_ids || []), remapJsonIds(row.result_json || null, maps), row.submitted_at || null]);
         for (const row of manifest.files || []) await client.query("INSERT INTO stored_files(id,user_id,attempt_id,library_entry_id,purpose,original_name,mime_type,size_bytes,storage_path,complete,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,coalesce($10::timestamptz,now()))", [maps.files.get(row.id), auth.user.id, maps.attempts.get(row.attempt_id) || null, maps.library.get(row.library_entry_id) || null, row.purpose, row.original_name, row.mime_type, Number(row.size_bytes), row._restoredPath, row.created_at || null]);
         for (const row of manifest.reviews || []) await client.query("INSERT INTO review_records(id,user_id,attempt_id,question_id,kind,data_json,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,coalesce($7::timestamptz,now()),coalesce($8::timestamptz,now()))", [newId("rev"), auth.user.id, maps.attempts.get(row.attempt_id) || null, row.question_id, row.kind, remapJsonIds(row.data_json || {}, maps), row.created_at || null, row.updated_at || null]);
         for (const row of manifest.documents || []) {
