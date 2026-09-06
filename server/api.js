@@ -261,7 +261,7 @@ async function authRoutes(req, res, pathname) {
 
 async function adminRoutes(req, res, pathname, auth) {
   requireAdmin(auth);
-  requireCsrf(req, auth);
+  if (!["GET", "HEAD"].includes(req.method)) requireCsrf(req, auth);
   if (req.method === "GET" && pathname === "/api/admin/users") {
     const query = new URL(req.url, "http://localhost").searchParams.get("q") || "";
     const rows = (await pool.query("SELECT * FROM users WHERE username ILIKE $1 OR display_name ILIKE $1 ORDER BY created_at DESC LIMIT 200", [`%${query}%`])).rows;
