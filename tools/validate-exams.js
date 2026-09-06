@@ -1,11 +1,20 @@
 const fs = require("fs");
 const path = require("path");
 
-const files = process.argv.slice(2);
-if (!files.length) {
-  console.error("Usage: node tools/validate-exams.js <exam.json> [...]");
+const inputs = process.argv.slice(2);
+if (!inputs.length) {
+  console.error("Usage: node tools/validate-exams.js <exam.json-or-directory> [...]");
   process.exit(1);
 }
+
+const files = inputs.flatMap((input) => {
+  if (!fs.existsSync(input)) return [input];
+  if (!fs.statSync(input).isDirectory()) return [input];
+  return fs.readdirSync(input)
+    .filter((name) => name.toLowerCase().endsWith(".json"))
+    .sort()
+    .map((name) => path.join(input, name));
+});
 
 let failed = false;
 for (const file of files) {

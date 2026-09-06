@@ -9,7 +9,7 @@
     "start": "electron .",
     "server": "node server/index.js",
     "smoke": "node tools/integration-smoke.js",
-    "check": "node --check app.js && node --check main.js && node --check preload.js && node --check src/core/security.js && node --check src/client/server-client.js && node --check server/index.js && node --check server/api.js && node --check server/security.js && node --check server/xfyun.js && node --check tools/integration-smoke.js && node --check tools/validate-exams.js && node tools/validate-exams.js exams/*.json && node --test tests/*.test.js",
+    "check": "node --check app.js && node --check main.js && node --check preload.js && node --check src/core/security.js && node --check src/client/server-client.js && node --check server/index.js && node --check server/api.js && node --check server/security.js && node --check server/xfyun.js && node --check tools/integration-smoke.js && node --check tools/validate-exams.js && node tools/validate-exams.js exams && node --test tests/*.test.js",
     "test": "node --test tests/*.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"

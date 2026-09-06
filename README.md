@@ -120,7 +120,7 @@ npm run check
 修改或生成 JSON 后，建议运行：
 
 ```bash
-node tools/validate-exams.js exams/*.json
+node tools/validate-exams.js exams
 ```
 
 校验会检查：
