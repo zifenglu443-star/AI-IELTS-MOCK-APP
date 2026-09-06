@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ieltsmock
+      POSTGRES_USER: ieltsmock
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ieltsmock -d ieltsmock"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/ieltsmock/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      DATA_DIR: /app/data
+      DATABASE_URL: postgresql://ieltsmock:${POSTGRES_PASSWORD}@postgres:5432/ieltsmock
+      COOKIE_SECURE: "true"
+      ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY:?Set ENCRYPTION_MASTER_KEY}
+      ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-admin}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:?Set ADMIN_BOOTSTRAP_PASSWORD}
+      APP_VERSION: ${APP_VERSION:?Set APP_VERSION}
+      DEFAULT_QUOTA_BYTES: ${DEFAULT_QUOTA_BYTES:-2147483648}
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-209715200}
+    volumes:
+      - user_files:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+
+  site:
+    build:
+      context: ../..
+      dockerfile: deploy/ieltsmock/Dockerfile.site
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "100.97.86.42:8089:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  user_files:

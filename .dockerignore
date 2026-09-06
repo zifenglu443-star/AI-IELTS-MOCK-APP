@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+dist
+tmp
+demo-upload
+xhs-assets
+ielts-mock-lab-web-demo
+*.zip
+deploy/ieltsmock/.env
+data

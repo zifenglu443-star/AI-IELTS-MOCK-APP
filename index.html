@@ -271,6 +271,7 @@
              <label><input type="radio" name="mode" value="practice" /><span>练习</span></label>
            </div>
            <div class="timer" id="timer" aria-live="polite">60:00</div>
+            <button class="ghost-light-button" id="pausePracticeBtn" type="button" hidden>暂停</button>
             <button class="primary-button" id="submitBtn" type="button">交卷</button>
           </div>
         </section>
@@ -312,7 +313,7 @@
         <div class="setup-actions">
           <button class="primary-button" id="saveAiSettingsBtn" type="button">保存模型设置</button>
           <button class="secondary-button" id="resetAiSettingsBtn" type="button">恢复默认</button>
-          <button class="secondary-button danger-button" id="clearLocalDataBtn" type="button">清除考试库和记录</button>
+          <button class="secondary-button danger-button" id="clearLocalDataBtn" type="button">清除账户学习数据</button>
           <span class="ai-status" id="aiSettingsStatus" role="status" aria-live="polite">桌面版加密保存；网页版 Key 仅保留在当前标签页</span>
         </div>
       </div>
@@ -326,8 +327,9 @@
       <div id="resultBody"></div>
     </dialog>
 
-    <script src="./pdfjs-loader.js"></script>
     <script src="./src/core/security.js"></script>
+    <script src="./src/client/server-client.js"></script>
+    <script src="./pdfjs-loader.js"></script>
     <script src="./speaking-banks/2026-may-august-ielts-speaking-bank.js"></script>
     <script src="./app.js"></script>
   </body>

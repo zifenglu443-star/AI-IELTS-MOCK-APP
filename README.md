@@ -1,6 +1,25 @@
 # IELTS Mock Lab
 
-一个本地运行的雅思四科模考工具，支持听力、阅读、写作、口语。可以直接用浏览器打开 `index.html`，也可以通过 Electron 集成为桌面软件。
+一个支持听力、阅读、写作、口语的雅思四科模考平台。生产网页位于 [ieltsmock.luzifeng.cn](https://ieltsmock.luzifeng.cn)，Electron 桌面端加载同一受信任站点；两端共享账户和服务器数据。
+
+## 服务器版概览
+
+- 账号仅由管理员创建，不开放自助注册；首次登录强制修改临时密码。
+- 密码使用 Argon2id 摘要，会话使用 Secure、HttpOnly、SameSite Cookie 和 CSRF Token。
+- 题库、考试进度、答案、成绩、附件、录音、复习记录、口语题库和模型设置以 PostgreSQL 与受保护文件卷为准。
+- API Key 使用独立主密钥进行 AES-256-GCM 加密；普通接口只返回掩码，不把明文密钥交回网页。
+- 模考由服务器保存绝对截止时间；练习模式可暂停。考试写入使用租约和版本号，防止旧设备覆盖新答案。
+- 默认用户容量 2 GiB、单文件上限 200 MiB，管理员可调整配额。
+
+本地开发需要 PostgreSQL，并通过环境变量提供 `DATABASE_URL`、32 字节 Base64 `ENCRYPTION_MASTER_KEY` 和可选的首次管理员凭据：
+
+```bash
+npm install
+COOKIE_SECURE=false DATABASE_URL=postgresql://... \
+  ENCRYPTION_MASTER_KEY=... npm run server
+```
+
+再由任意静态服务器提供项目根目录，并把 `/api` 反向代理到 Node.js API。生产部署、备份和回滚说明见 [`deploy/ieltsmock/DEPLOYMENT.md`](deploy/ieltsmock/DEPLOYMENT.md)。
 
 ## 功能
 
@@ -25,7 +44,7 @@
 - 支持阅读文章、题干和说明文字高光
 - 支持题号导航、已答状态、复查标记
 - 模考完成后可从成绩页返回主页面
-- 成绩会保存到浏览器本地历史记录
+- 成绩会保存到服务器历史记录
 - 听力 / 阅读错题记录支持点击“AI解析”
 
 ## 桌面软件
@@ -37,7 +56,7 @@ npm install
 npm start
 ```
 
-Electron 二进制会在安装阶段下载并校验。GitHub 下载较慢时，可使用镜像；文件仍会按 Electron 包内置的 SHA-256 校验：
+Electron 默认连接生产站点，也可以通过 `IELTS_APP_URL` 指定受信任的部署地址。二进制会在安装阶段下载并校验。GitHub 下载较慢时，可使用镜像；文件仍会按 Electron 包内置的 SHA-256 校验：
 
 ```bash
 ELECTRON_MIRROR=https://repo.huaweicloud.com/electron/ npm install
@@ -49,13 +68,9 @@ ELECTRON_MIRROR=https://repo.huaweicloud.com/electron/ npm install
 npm run dist
 ```
 
-打包产物会输出到 `dist/`。桌面版会隐藏浏览器地址栏，使用方式更像普通软件。API Key 仍然只在运行时输入，不会写入代码。
+打包产物会输出到 `dist/`。桌面版保留沙箱和上下文隔离，限制站外导航与媒体权限来源。网络不可用时会显示连接状态页，不会出现空白窗口。
 
-模型设置安全说明：
-
-- Electron 桌面版通过系统 `safeStorage` 加密保存模型设置，密钥不会写入 `localStorage`。
-- 浏览器版只把非敏感配置写入 `localStorage`，API Key 仅保留在当前标签页的 `sessionStorage` 中。
-- 旧版本曾保存在 `localStorage` 的 API Key 会在启动时迁移并从持久化配置中删除。
+模型设置安全说明：API Key 由服务器加密保存并代发模型请求，不写入代码、浏览器持久化配置、备份或普通接口响应。服务器会阻止自定义接口访问环回、内网和云元数据地址，并逐次校验重定向。
 
 开发检查：
 
@@ -68,12 +83,12 @@ npm run check
 
 ## 使用方法
 
-1. 用浏览器打开 `index.html`，或运行 `npm start` 打开桌面版。
+1. 使用管理员提供的账号登录；临时密码首次使用时必须修改。
 2. 选择题目 JSON，页面会显示待添加预览。
 3. 确认信息无误后，点击“确认添加到考试库”。
 4. 如果是听力题，同时导入 JSON 中引用的音频文件和图片文件。
-5. 在考试列表里点击“开始考试”。
-6. 考完提交后，可在成绩页点击“返回主页面”。
+5. 在考试列表里选择模考或练习并开始。
+6. 作答自动同步到服务器；断网草稿会按用户短期保存在本机，退出登录时清除。
 
 ## AI 生成考试
 
@@ -85,7 +100,7 @@ npm run check
 
 注意：
 
-- API Key 只在页面运行时输入，不会写入代码文件。
+- API Key 在设置页输入后由服务器加密保存，不会写入代码文件或导出备份。
 - 音频和图片会作为本地资源绑定到生成的考试卡片。
 - 音频会根据文件名中的 `Part1`、`Part 2`、`Section3` 等自动提示给模型匹配到对应 Part。
 - 上传的本地 PDF / 图片会按官方 `multipart/form-data` 文件解析接口上传，字段为 `file`、`tool_type=prime-sync`、`file_type=PDF/PNG/JPG/JPEG`。

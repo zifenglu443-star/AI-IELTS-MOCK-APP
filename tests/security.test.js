@@ -28,12 +28,12 @@ test("validateFeatureConfig rejects malformed endpoints and credentials", () => 
   assert.deepEqual(
     validateFeatureConfig({
       providerKey: "glm",
-      baseUrl: "javascript:alert(1)",
+      baseUrl: "http://example.com/v1",
       apiKey: "short",
       model: "",
     }),
     {
-      baseUrl: "接口地址仅支持 http: / https:。",
+      baseUrl: "接口地址仅支持 https:。",
       apiKey: "API Key 看起来过短，请检查后再保存。",
       model: "请输入模型名称。",
     },
@@ -50,6 +50,15 @@ test("validateFeatureConfig accepts supported HTTPS settings", () => {
     }),
     {},
   );
+});
+
+test("validateFeatureConfig accepts a server-stored credential placeholder", () => {
+  assert.deepEqual(validateFeatureConfig({
+    providerKey: "glm",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    apiKey: "server-stored",
+    model: "glm-5.2",
+  }), {});
 });
 
 test("combineAbortSignals provides a fallback-compatible combined signal", () => {

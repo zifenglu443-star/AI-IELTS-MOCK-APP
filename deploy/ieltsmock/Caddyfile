@@ -1,0 +1,25 @@
+:80 {
+	encode zstd gzip
+
+	header {
+		-Server
+		Content-Security-Policy "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' data:; form-action 'self'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "microphone=(self)"
+	}
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		@versioned path_regexp versioned \.(?:js|css|mjs|png|jpg|jpeg|webp|svg|json)$
+		header @versioned Cache-Control "public, max-age=3600, must-revalidate"
+		header /index.html Cache-Control "no-cache"
+		file_server
+	}
+}

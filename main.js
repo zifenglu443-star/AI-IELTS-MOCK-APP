@@ -3,6 +3,8 @@ const fs = require("fs/promises");
 const { app, BrowserWindow, ipcMain, safeStorage, shell, session } = require("electron");
 
 const SECURE_SETTINGS_FILE = "secure-ai-settings.bin";
+const APP_URL = process.env.IELTS_APP_URL || "https://ieltsmock.luzifeng.cn";
+const APP_ORIGIN = new URL(APP_URL).origin;
 
 function getSecureSettingsPath() {
   return path.join(app.getPath("userData"), SECURE_SETTINGS_FILE);
@@ -57,17 +59,32 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, "index.html"));
+  win.loadURL(APP_URL);
+
+  win.webContents.on("will-navigate", (event, url) => {
+    try {
+      if (new URL(url).origin !== APP_ORIGIN) event.preventDefault();
+    } catch {
+      event.preventDefault();
+    }
+  });
+
+  win.webContents.on("did-fail-load", (_event, errorCode, _description, validatedUrl, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3 || validatedUrl.startsWith("file:")) return;
+    win.loadFile(path.join(__dirname, "offline.html"));
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
 }
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(permission === "media");
+    let trusted = false;
+    try { trusted = new URL(webContents.getURL()).origin === APP_ORIGIN; } catch {}
+    callback(permission === "media" && trusted);
   });
   createWindow();
   app.on("activate", () => {

@@ -52,9 +52,7 @@
     } else {
       try {
         const url = new URL(baseUrl);
-        const allowed = providerKey === "xfyun"
-          ? ["https:", "wss:"]
-          : ["http:", "https:"];
+        const allowed = providerKey === "xfyun" ? ["https:", "wss:"] : ["https:"];
         if (!allowed.includes(url.protocol)) {
           errors.baseUrl = `接口地址仅支持 ${allowed.join(" / ")}。`;
         }

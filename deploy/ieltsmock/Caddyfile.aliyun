@@ -1,0 +1,73 @@
+mail.luzifeng.cn {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8082
+}
+
+interview.austinaiinterviewsystem.fun {
+	encode zstd gzip
+	reverse_proxy 100.97.86.42:8088 {
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
+}
+
+opportunity.luzifeng.cn {
+	encode zstd gzip
+	reverse_proxy 100.97.86.42:8080 {
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
+}
+
+interview.luzifeng.cn {
+	encode zstd gzip
+	reverse_proxy 100.97.86.42:8088 {
+		header_up Host interview.luzifeng.cn
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
+}
+
+ieltsmock.luzifeng.cn {
+	encode zstd gzip
+	reverse_proxy 100.97.86.42:8089 {
+		header_up Host ieltsmock.luzifeng.cn
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
+}
+
+# Find Opportunity is intentionally served over plain HTTP when addressed by
+# the relay's public IP. Declaring the scheme prevents Caddy's automatic HTTPS
+# redirect from sending a bare IP to a certificate endpoint that cannot work.
+http://47.80.60.90 {
+	encode zstd gzip
+	route {
+		redir /505 /505/ permanent
+		handle /505/api/* {
+			reverse_proxy 127.0.0.1:5050
+		}
+		handle_path /505/uploads/* {
+			root * /var/lib/505/uploads
+			file_server
+		}
+		handle_path /505/* {
+			root * /var/lib/505/app
+			file_server
+		}
+		handle {
+			reverse_proxy 100.97.86.42:8080 {
+				lb_try_duration 10s
+				lb_try_interval 250ms
+			}
+		}
+	}
+}
+
+:8080 {
+	encode zstd gzip
+	reverse_proxy 100.97.86.42:8080 {
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
+}

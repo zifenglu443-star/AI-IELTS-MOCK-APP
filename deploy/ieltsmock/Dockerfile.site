@@ -1,0 +1,15 @@
+FROM node:22.19-bookworm-slim AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+FROM caddy:2.10.2-alpine
+COPY deploy/ieltsmock/Caddyfile /etc/caddy/Caddyfile
+COPY index.html app.js styles.css pdfjs-loader.js /srv/
+COPY src/core /srv/src/core
+COPY src/client /srv/src/client
+COPY assets /srv/assets
+COPY exams /srv/exams
+COPY speaking-banks /srv/speaking-banks
+COPY --from=dependencies /app/node_modules/pdfjs-dist/legacy/build/pdf.min.mjs /srv/node_modules/pdfjs-dist/legacy/build/pdf.min.mjs
+COPY --from=dependencies /app/node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs /srv/node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs

@@ -7,7 +7,9 @@
   "scripts": {
     "postinstall": "node tools/prepare-electron.js",
     "start": "electron .",
-    "check": "node --check app.js && node --check main.js && node --check preload.js && node --check src/core/security.js && node --check tools/validate-exams.js && node tools/validate-exams.js exams/*.json && node --test tests/*.test.js",
+    "server": "node server/index.js",
+    "smoke": "node tools/integration-smoke.js",
+    "check": "node --check app.js && node --check main.js && node --check preload.js && node --check src/core/security.js && node --check src/client/server-client.js && node --check server/index.js && node --check server/api.js && node --check server/security.js && node --check server/xfyun.js && node --check tools/integration-smoke.js && node --check tools/validate-exams.js && node tools/validate-exams.js exams/*.json && node --test tests/*.test.js",
     "test": "node --test tests/*.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
@@ -27,6 +29,7 @@
       "styles.css",
       "main.js",
       "preload.js",
+      "offline.html",
       "src/**/*",
       "node_modules/pdfjs-dist/legacy/build/pdf.min.mjs",
       "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
@@ -43,9 +46,15 @@
     }
   },
   "dependencies": {
-    "pdfjs-dist": "^6.1.200"
+    "archiver": "^7.0.1",
+    "argon2": "^0.44.0",
+    "pdfjs-dist": "^6.2.108",
+    "pg": "^8.16.3",
+    "unzipper": "^0.12.3",
+    "ws": "^8.21.0"
   },
   "allowScripts": {
+    "argon2@0.44.0": true,
     "electron@43.2.0": true,
     "electron-winstaller@5.4.0": true
   },

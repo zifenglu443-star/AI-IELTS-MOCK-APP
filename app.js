@@ -221,6 +221,11 @@ const state = {
   questionIndex: [],
   mode: "mock",
   remainingSeconds: 0,
+  deadlineAt: null,
+  practicePaused: false,
+  lastTimerTickAt: null,
+  lastLeaseRefreshAt: 0,
+  startingAttempt: false,
   timerId: null,
   startedAt: null,
   submitted: false,
@@ -513,6 +518,7 @@ const fallbackSamples = {
 };
 
 async function init() {
+  if (window.IeltsServer) await window.IeltsServer.bootstrap();
   await loadAiSettings();
   renderAiSettings();
   els.saveAiSettingsBtn.addEventListener("click", () => saveAiSettingsFromForm());
@@ -557,10 +563,12 @@ async function init() {
   els.cancelPendingBtn.addEventListener("click", clearPendingTest);
   els.examHomeBtn.addEventListener("click", () => returnToSetup(false));
   els.submitBtn.addEventListener("click", () => submitTest(false));
+  document.getElementById("pausePracticeBtn")?.addEventListener("click", togglePracticePause);
   els.closeResultBtn.addEventListener("click", () => els.resultDialog.close());
   document.querySelectorAll("input[name='mode']").forEach((input) => {
     input.addEventListener("change", (event) => {
       state.mode = event.target.value;
+      document.getElementById("pausePracticeBtn").hidden = state.mode !== "practice" || els.exam.hidden;
       updateAudioRule();
     });
   });
@@ -575,6 +583,7 @@ async function init() {
   renderHistoryList();
   renderPendingTest();
   updateLibraryModeHint();
+  await offerServerAttemptResume();
 }
 
 function handleAiFileInput(input, label, emptyText) {
@@ -633,7 +642,7 @@ function showToast(message, type = "info") {
 }
 
 async function requirePdfJs() {
-  const pdfjsLib = window.pdfjsLib || await window.pdfjsReady;
+  const pdfjsLib = window.pdfjsLib || await window.loadPdfJs?.();
   if (!pdfjsLib) {
     throw new Error("PDF.js 未加载。请重新安装依赖后再试。");
   }
@@ -683,7 +692,7 @@ async function handleSpeakingBankInput(event) {
     const bank = normalizeSpeakingBank(window.IeltsCore.parseSafeJson(await file.text()));
     // A seasonal speaking bank is a single active source; importing replaces the old one.
     state.speakingBank = bank;
-    const persisted = safeSetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, JSON.stringify(bank));
+    const persisted = await persistSpeakingBank(bank);
     renderSpeakingBankStatus();
     showToast(
       persisted
@@ -710,7 +719,7 @@ async function handleSpeakingBankAiInput(event) {
     });
     const bank = await mergeExtractedTextToSpeakingBank(material, extractedPages);
     state.speakingBank = normalizeSpeakingBank(bank);
-    const persisted = safeSetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, JSON.stringify(state.speakingBank));
+    const persisted = await persistSpeakingBank(state.speakingBank);
     downloadJson(state.speakingBank, makeJsonFileName(state.speakingBank.title || "speaking-season-bank"));
     renderSpeakingBankStatus();
     showToast(
@@ -769,6 +778,19 @@ ${JSON.stringify(extractedPages, null, 2)}`,
 
 async function loadSpeakingBank() {
   try {
+    if (window.IeltsServer?.authenticated) {
+      const document = await window.IeltsServer.loadDocument("speaking-bank");
+      if (document?.bank) {
+        state.speakingBank = normalizeSpeakingBank(document.bank);
+        renderSpeakingBankStatus();
+        return;
+      }
+      const bundledSource = await loadBundledSpeakingBank();
+      state.speakingBank = bundledSource ? normalizeSpeakingBank(bundledSource) : null;
+      if (state.speakingBank) await persistSpeakingBank(state.speakingBank);
+      renderSpeakingBankStatus();
+      return;
+    }
     const bundledId = safeGetStorage(localStorage, SPEAKING_BANK_BUNDLED_ID_STORAGE_KEY, "");
     if (bundledId !== BUNDLED_SPEAKING_BANK_ID) {
       const bundledSource = await loadBundledSpeakingBank();
@@ -793,6 +815,18 @@ async function loadSpeakingBank() {
     }
   }
   renderSpeakingBankStatus();
+}
+
+async function persistSpeakingBank(bank) {
+  if (window.IeltsServer?.authenticated) {
+    await window.IeltsServer.saveDocument("speaking-bank", {
+      bank,
+      bundledId: BUNDLED_SPEAKING_BANK_ID,
+      savedAt: new Date().toISOString(),
+    });
+    return true;
+  }
+  return safeSetStorage(localStorage, SPEAKING_BANK_STORAGE_KEY, JSON.stringify(bank));
 }
 
 async function loadBundledSpeakingBank() {
@@ -1050,6 +1084,16 @@ function getSubjectMaterialHint(subject) {
 }
 
 async function loadAiSettings() {
+  if (window.IeltsServer?.authenticated) {
+    try {
+      const saved = await window.IeltsServer.loadSettings();
+      state.aiSettings = mergeAiSettings(saved || {});
+      return;
+    } catch (error) {
+      console.warn("Server AI settings could not be loaded.", error);
+      showToast("服务器模型设置加载失败，请稍后重试。", "error");
+    }
+  }
   let legacySettings = null;
   try {
     legacySettings = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, AI_SETTINGS_STORAGE_KEY, "null"));
@@ -1150,7 +1194,9 @@ function normalizeFeatureSettings(config, fallback) {
   return {
     providerKey: config.providerKey || fallback.providerKey || "glm",
     baseUrl: config.baseUrl || fallback.baseUrl || "",
-    apiKey: config.apiKey || fallback.apiKey || "",
+    apiKey: config.apiKey || (config.secretConfigured ? "server-stored" : fallback.apiKey) || "",
+    secretConfigured: Boolean(config.secretConfigured),
+    secretMask: config.secretMask || "",
     model: config.model || fallback.model || "",
   };
 }
@@ -1232,12 +1278,13 @@ function renderAiSettings() {
           </label>
           <label class="field-stack">
             <span>API Key</span>
-            <input data-ai-feature="${escapeAttribute(meta.key)}" data-ai-field="apiKey" type="password" value="${escapeAttribute(config.apiKey || "")}" autocomplete="off" placeholder="只保存在本机" />
+            <input data-ai-feature="${escapeAttribute(meta.key)}" data-ai-field="apiKey" type="password" value="" autocomplete="off" placeholder="${escapeAttribute(config.secretConfigured ? `${config.secretMask || "••••••••"}（已保存在服务器）` : "输入后加密保存在服务器")}" />
           </label>
           <label class="field-stack">
             <span>模型</span>
             <input data-ai-feature="${escapeAttribute(meta.key)}" data-ai-field="model" type="text" value="${escapeAttribute(config.model || "")}" placeholder="${escapeAttribute(meta.placeholder)}" />
           </label>
+          <button class="secondary-button model-test-button" type="button" data-test-ai-feature="${escapeAttribute(meta.key)}">测试连接</button>
         </div>
       </section>
     `;
@@ -1250,6 +1297,9 @@ function renderAiSettings() {
   });
   document.querySelectorAll("[data-ai-feature]").forEach((input) => {
     input.addEventListener("input", () => validateAiSettingsForm());
+  });
+  document.querySelectorAll("[data-test-ai-feature]").forEach((button) => {
+    button.addEventListener("click", () => testAiConnection(button));
   });
   validateAiSettingsForm();
 }
@@ -1291,7 +1341,9 @@ function collectAiSettingsFromForm() {
     const feature = input.dataset.aiFeature;
     const field = input.dataset.aiField;
     if (!next.features[feature]) return;
-    next.features[feature][field] = input.value.trim();
+    const value = input.value.trim();
+    if (field === "apiKey" && !value) return;
+    next.features[feature][field] = value;
   });
   return mergeAiSettings(next);
 }
@@ -1327,6 +1379,11 @@ function validateAiSettingsForm(showSummary = false) {
 }
 
 async function persistAiSettings() {
+  if (window.IeltsServer?.authenticated) {
+    const saved = await window.IeltsServer.saveSettings(state.aiSettings);
+    state.aiSettings = mergeAiSettings(saved || state.aiSettings);
+    return "已加密保存到服务器";
+  }
   if (window.secureSettings) {
     await window.secureSettings.save(state.aiSettings);
     safeRemoveStorage(localStorage, AI_SETTINGS_STORAGE_KEY);
@@ -1338,6 +1395,23 @@ async function persistAiSettings() {
   }
   safeSetStorage(sessionStorage, AI_SETTINGS_SESSION_SECRETS_KEY, JSON.stringify(extractAiSecrets(state.aiSettings)));
   return "配置已保存；API Key 仅保留在当前标签页";
+}
+
+async function testAiConnection(button) {
+  const feature = button.dataset.testAiFeature;
+  button.disabled = true;
+  els.aiSettingsStatus.textContent = "正在测试连接，这可能产生少量 API 消耗…";
+  try {
+    if (!validateAiSettingsForm(true)) return;
+    state.aiSettings = collectAiSettingsFromForm();
+    await persistAiSettings();
+    const result = await window.IeltsServer.testSetting(feature);
+    els.aiSettingsStatus.textContent = result.message || "连接成功。";
+  } catch (error) {
+    els.aiSettingsStatus.textContent = `连接失败：${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function saveAiSettingsFromForm() {
@@ -1356,7 +1430,11 @@ async function resetAiSettings() {
   state.aiSettings = structuredClone(defaultAiSettings);
   renderAiSettings();
   try {
-    els.aiSettingsStatus.textContent = `${await persistAiSettings()}，并已恢复默认`;
+    const saved = window.IeltsServer?.authenticated
+      ? await window.IeltsServer.saveSettings(state.aiSettings, true)
+      : null;
+    if (saved) state.aiSettings = mergeAiSettings(saved);
+    els.aiSettingsStatus.textContent = `${saved ? "已在服务器" : await persistAiSettings()}，并已恢复默认`;
   } catch (error) {
     console.error("Default AI settings could not be persisted.", error);
     els.aiSettingsStatus.textContent = "已恢复默认，但安全存储写入失败";
@@ -1364,8 +1442,9 @@ async function resetAiSettings() {
 }
 
 async function clearLocalExamData() {
-  const confirmed = confirm("确定清除本机保存的考试库、考试记录、当季口语题库和待添加内容吗？模型设置会保留。");
+  const confirmed = confirm("确定永久清除当前账户在服务器上的考试库、考试记录、附件、录音、口语题库和复习记录吗？模型设置会保留。此操作无法撤销。");
   if (!confirmed) return;
+  if (window.IeltsServer?.authenticated) await window.IeltsServer.clearLearningData();
   state.library.forEach((entry) => revokeAssetMap(entry.assets));
   state.library = [];
   state.pendingTest = null;
@@ -1385,7 +1464,7 @@ async function clearLocalExamData() {
   renderLibrary();
   renderHistoryList();
   renderSpeakingBankStatus();
-  els.aiSettingsStatus.textContent = "考试库和记录已清除";
+  els.aiSettingsStatus.textContent = window.IeltsServer?.authenticated ? "服务器学习数据已清除" : "考试库和记录已清除";
 }
 
 async function generateExamWithAi() {
@@ -1881,7 +1960,7 @@ function hasResolvableImageRef(target, assets) {
   const refs = [target?.image, target?.imageAsset, target?.imageName].filter(Boolean).map(String);
   return refs.some((ref) => {
     if (isPdfAssetRef(ref)) return false;
-    if (/^data:image\//i.test(ref) || /^blob:/i.test(ref)) return true;
+    if (/^data:image\//i.test(ref) || /^blob:/i.test(ref) || isProtectedFileRef(ref)) return true;
     const asset = findAssetForRef(assets, ref);
     return asset ? isImageAsset(asset, ref) : isLikelyImageRef(ref);
   });
@@ -2235,7 +2314,7 @@ async function requestOfficialFileParser(input, provider) {
       Authorization: `Bearer ${provider.apiKey}`,
     },
     body: form,
-  });
+  }, { feature: "ocr", stage: "ocr-file-parser" });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`文件解析 API ${response.status}: ${errorText.slice(0, 300)}`);
@@ -2274,7 +2353,7 @@ async function requestGlmLayoutParsing(input, provider) {
       Authorization: `Bearer ${provider.apiKey}`,
     },
     body: JSON.stringify(body),
-  });
+  }, { feature: "ocr", stage: "ocr-layout" });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`OCR API ${response.status}: ${errorText.slice(0, 300)}`);
@@ -2436,7 +2515,7 @@ async function requestFluencyAssessment(blob, part) {
       Authorization: `Bearer ${provider.apiKey}`,
     },
     body: form,
-  }, { timeoutMs: AI_REQUEST_TIMEOUT_MS });
+  }, { timeoutMs: AI_REQUEST_TIMEOUT_MS, feature: "fluency", stage: "fluency" });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`流利度评分 API ${response.status}: ${errorText.slice(0, 300)}`);
@@ -2450,11 +2529,15 @@ async function requestFluencyAssessment(blob, part) {
 }
 
 async function requestXfyunIseAssessment(blob, part, provider) {
-  const credentials = parseXfyunCredentials(provider.apiKey);
   const endpoint = provider.baseUrl || XFYUN_ISE_WS_URL;
   const category = normalizeXfyunIseCategory(provider.model);
   const text = buildXfyunIseText(part);
   const pcm = await audioBlobToPcm16Bytes(blob);
+  if (window.IeltsServer?.authenticated && provider.apiKey === "server-stored") {
+    const result = await window.IeltsServer.assessXfyun({ endpoint, category, text, pcm: bytesToBase64(pcm) });
+    return parseXfyunIseResult(result.xml, category);
+  }
+  const credentials = parseXfyunCredentials(provider.apiKey);
   const url = await buildXfyunWsAuthUrl(endpoint, credentials);
   const xml = await sendXfyunIseAudio(url, {
     appId: credentials.appId,
@@ -2728,7 +2811,7 @@ async function requestGlmSpeechTranscription(blob, fileName) {
       Authorization: `Bearer ${provider.apiKey}`,
     },
     body: form,
-  });
+  }, { feature: "speech", stage: "transcription" });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`语音转写 API ${response.status}: ${errorText.slice(0, 300)}`);
@@ -2948,7 +3031,11 @@ async function fetchWithTimeout(url, init = {}, options = {}) {
     timeoutController.abort(new AiGenerationError(`AI 请求超过 ${Math.round(timeoutMs / 1000)} 秒未返回。`, "TIMEOUT"));
   }, timeoutMs);
   try {
-    return await fetch(url, { ...init, signal });
+    const requestInit = { ...init, signal };
+    if (window.IeltsServer?.authenticated && options.feature && new Headers(init.headers || {}).has("Authorization")) {
+      return await window.IeltsServer.proxyFetch(options.feature, url, requestInit, options.stage || options.feature);
+    }
+    return await fetch(url, requestInit);
   } catch (error) {
     if (state.aiAbortController?.signal?.aborted) {
       const reason = state.aiAbortController.signal.reason;
@@ -2988,7 +3075,7 @@ async function requestAiCompletion(feature, messages, options = {}) {
       Authorization: `Bearer ${provider.apiKey}`,
     },
     body: JSON.stringify(body),
-  }, options);
+  }, { ...options, feature, stage: options.stage || feature });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`${providerLabels[providerKey]} API ${response.status}: ${errorText.slice(0, 300)}`);
@@ -3568,7 +3655,8 @@ async function attachAssetsToLibraryEntries(assets) {
     updated.push(entry);
   });
   for (const entry of updated) {
-    await persistEntryAssets(entry);
+    if (window.IeltsServer?.authenticated) await persistServerEntryAssets(entry);
+    else await persistEntryAssets(entry);
   }
   if (matched > 0) saveLibrary();
   return matched;
@@ -3672,14 +3760,67 @@ async function addTestToLibrary(test, source, announce = true, assets = new Map(
     importedAt: new Date().toISOString(),
   };
   externalizeInlineImages(entry);
+  if (window.IeltsServer?.authenticated) await persistServerEntryAssets(entry);
   state.library.unshift(entry);
-  await persistEntryAssets(entry);
+  if (!window.IeltsServer?.authenticated) await persistEntryAssets(entry);
   saveLibrary();
   renderLibrary();
   if (announce) {
     els.jsonFileName.textContent = `${test.title || "Untitled Test"} 已加入考试库`;
   }
   return entry;
+}
+
+async function persistServerEntryAssets(entry) {
+  const uploadedByAsset = new Map();
+  const uploadedByRef = new Map();
+  for (const ref of collectAssetRefs(entry.test)) {
+    if (isExternalAsset(ref)) continue;
+    const asset = findAssetForRef(entry.assets, ref);
+    if (!asset) continue;
+    let fileId = uploadedByAsset.get(asset);
+    if (!fileId) {
+      const blob = await getAssetBlob(asset);
+      if (!blob) continue;
+      const result = await window.IeltsServer.uploadBlob(blob, {
+        libraryEntryId: entry.id,
+        purpose: String(blob.type || "").startsWith("audio/") ? "listening-audio" : "question-asset",
+        name: asset.file?.name || String(ref).split("/").pop() || "attachment",
+        mimeType: blob.type || asset.file?.type || "application/octet-stream",
+      });
+      fileId = result.fileId;
+      uploadedByAsset.set(asset, fileId);
+    }
+    uploadedByRef.set(String(ref), `/api/files/${encodeURIComponent(fileId)}`);
+  }
+  replaceTestAssetRefs(entry.test, uploadedByRef);
+  uploadedByAsset.forEach((fileId, asset) => {
+    asset.fileId = fileId;
+    asset.url = `/api/files/${encodeURIComponent(fileId)}`;
+  });
+}
+
+function replaceTestAssetRefs(test, replacements) {
+  const replace = (value) => replacements.get(String(value || "")) || value;
+  if (test.audio) test.audio = replace(test.audio);
+  const transcriptFiles = test.analysisContext?.listeningTranscriptFiles || test.listeningTranscriptFiles;
+  if (Array.isArray(transcriptFiles)) {
+    const replaced = transcriptFiles.map(replace);
+    if (test.analysisContext?.listeningTranscriptFiles) test.analysisContext.listeningTranscriptFiles = replaced;
+    else test.listeningTranscriptFiles = replaced;
+  }
+  (test.sections || []).forEach((section) => {
+    if (section.audio) section.audio = replace(section.audio);
+    replaceImageTargetRef(section, replacements);
+    (section.groups || []).forEach((group) => replaceImageTargetRef(group, replacements));
+  });
+}
+
+function replaceImageTargetRef(target, replacements) {
+  const matched = [target.image, target.imageAsset, target.imageName]
+    .map((ref) => replacements.get(String(ref || "")))
+    .find(Boolean);
+  if (matched) target.image = matched;
 }
 
 function externalizeInlineImages(entry) {
@@ -3959,6 +4100,10 @@ function saveLibrary() {
     importedAt: entry.importedAt,
     generatedAssets: serializeGeneratedAssets(entry.assets),
   }));
+  if (window.IeltsServer?.authenticated) {
+    window.IeltsServer.saveLibrary(serializable);
+    return;
+  }
   try {
     setLocalStorageWithQuota(LIBRARY_STORAGE_KEY, JSON.stringify(serializable.slice(0, 50)));
   } catch (error) {
@@ -3985,7 +4130,9 @@ function setLocalStorageWithQuota(key, value) {
 
 async function loadLibrary() {
   try {
-    const saved = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, LIBRARY_STORAGE_KEY, "[]"));
+    const saved = window.IeltsServer?.authenticated
+      ? await window.IeltsServer.loadLibrary()
+      : window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, LIBRARY_STORAGE_KEY, "[]"));
     const loaded = [];
     for (const entry of (Array.isArray(saved) ? saved : [])) {
       if (!entry?.test) continue;
@@ -4230,7 +4377,11 @@ function collectAssetRefs(test) {
 }
 
 function isExternalAsset(ref) {
-  return /^(https?:|data:|blob:)/i.test(String(ref || ""));
+  return /^(https?:|data:|blob:)/i.test(String(ref || "")) || isProtectedFileRef(ref);
+}
+
+function isProtectedFileRef(ref) {
+  return /^\/api\/files\/[A-Za-z0-9_.-]+(?:$|[?#])/i.test(String(ref || ""));
 }
 
 function isPdfAssetRef(ref) {
@@ -4412,7 +4563,95 @@ function expandQuestionIdRange(id) {
   return Array.from({ length: end - start + 1 }, (_, index) => String(start + index));
 }
 
-function startTest(test) {
+async function offerServerAttemptResume() {
+  const pending = window.IeltsServer?.activeAttempt;
+  if (!pending?.test || !["active", "paused"].includes(pending.status)) {
+    const recovery = window.IeltsServer?.recoveryDraft;
+    if (!recovery?.test || !recovery?.snapshot) return;
+    const recover = confirm("检测到一份未能在截止前同步的本机草稿，是否将它恢复为练习？");
+    if (!recover) return;
+    state.mode = "practice";
+    state.currentLibraryEntryId = recovery.libraryEntryId || "";
+    await startTest(recovery.test, { initialSnapshot: { ...recovery.snapshot, mode: "practice", status: "active", deadlineAt: null } });
+    window.IeltsServer.recoveryDraft = null;
+    return;
+  }
+  const resume = confirm(`检测到未完成的 ${getTestTypeLabel(pending.test.testType)} 考试，是否继续？`);
+  if (!resume) {
+    await window.IeltsServer.abandonAttempt(pending.id);
+    return;
+  }
+  try {
+    const attempt = await window.IeltsServer.takeoverAttempt(pending.id);
+    state.mode = attempt.mode;
+    state.currentLibraryEntryId = attempt.libraryEntryId || "";
+    startTest(attempt.test, { restoreAttempt: attempt });
+    if (attempt.mode === "mock" && attempt.deadlineAt && new Date(attempt.deadlineAt).getTime() <= Date.now()) {
+      setTimeout(() => submitTest(true), 0);
+    }
+  } catch (error) {
+    showToast(`无法恢复考试：${error.message}`, "error");
+  }
+}
+
+function serializeRecordingsForAttempt() {
+  return Object.fromEntries(Object.entries(state.speakingRecordings || {}).map(([key, recording]) => [key, {
+    fileId: recording.fileId || "",
+    mimeType: recording.mimeType || "audio/webm",
+    size: Number(recording.size || 0),
+    createdAt: recording.createdAt || null,
+    url: recording.fileId ? `/api/files/${encodeURIComponent(recording.fileId)}` : "",
+  }]));
+}
+
+function getServerAttemptSnapshot(status) {
+  return {
+    answers: structuredClone(state.answers || {}),
+    reviewIds: [...state.review],
+    currentQuestionId: state.currentQuestionId,
+    currentSectionIndex: state.currentSectionIndex,
+    remainingSeconds: Math.max(0, Math.ceil(state.remainingSeconds || 0)),
+    deadlineAt: state.deadlineAt ? new Date(state.deadlineAt).toISOString() : null,
+    status: status || (state.practicePaused ? "paused" : "active"),
+    audioState: {
+      locks: [...state.audioLocks],
+      endedKeys: [...state.audioEndedKeys],
+      confirmedKeys: [...state.audioStartConfirmedKeys],
+      reviewStarted: state.listeningReviewStarted,
+      currentAudioKey: state.currentAudioKey,
+      currentTime: Number(els.audioPlayer?.currentTime || 0),
+      recordings: serializeRecordingsForAttempt(),
+    },
+    fullMockState: state.fullMock,
+  };
+}
+
+function scheduleServerAttemptSave(immediate = false, status) {
+  if (!window.IeltsServer?.authenticated || !window.IeltsServer.activeAttempt || state.submitted) return;
+  return window.IeltsServer.scheduleAttemptSave(getServerAttemptSnapshot(status), immediate);
+}
+
+function togglePracticePause() {
+  if (state.mode !== "practice" || state.submitted) return;
+  state.practicePaused = !state.practicePaused;
+  state.lastTimerTickAt = Date.now();
+  const button = document.getElementById("pausePracticeBtn");
+  if (button) button.textContent = state.practicePaused ? "继续" : "暂停";
+  showToast(state.practicePaused ? "练习已暂停，答案已保存。" : "继续练习。", "info");
+  scheduleServerAttemptSave(true, state.practicePaused ? "paused" : "active");
+}
+
+async function startTest(test, options = {}) {
+  if (!options.restoreAttempt && window.IeltsServer?.authenticated) {
+    if (state.startingAttempt) {
+      showToast("考试正在创建，请稍候。", "warning");
+      return;
+    }
+    if (window.IeltsServer.activeAttempt) {
+      showToast("已有考试正在进行中。", "warning");
+      return;
+    }
+  }
   clearInterval(state.timerId);
   normalizeLetterEntryGroups(test);
   state.test = test;
@@ -4421,20 +4660,56 @@ function startTest(test) {
   state.currentSectionIndex = 0;
   state.currentQuestionId = null;
   state.questionIndex = buildQuestionIndex(test);
-  state.remainingSeconds = Number(test.durationMinutes || (test.testType === "reading" ? 60 : 30)) * 60;
-  state.startedAt = new Date();
+  const restored = options.restoreAttempt || null;
+  const seed = restored || options.initialSnapshot || null;
+  if (seed?.mode) state.mode = seed.mode;
+  state.remainingSeconds = seed?.remainingSeconds ?? Number(test.durationMinutes || (test.testType === "reading" ? 60 : 30)) * 60;
+  state.startedAt = seed?.startedAt ? new Date(seed.startedAt) : new Date();
+  state.deadlineAt = seed?.deadlineAt ? new Date(seed.deadlineAt).getTime() : (state.mode === "mock" ? Date.now() + state.remainingSeconds * 1000 : null);
+  state.practicePaused = seed?.status === "paused";
+  state.lastTimerTickAt = Date.now();
+  state.lastLeaseRefreshAt = Date.now();
   state.submitted = false;
   state.audioMaxTime = 0;
-  state.audioLocks = new Set();
-  state.audioEndedKeys = new Set();
-  state.audioStartConfirmedKeys = new Set();
+  state.audioLocks = new Set(seed?.audioState?.locks || []);
+  state.audioEndedKeys = new Set(seed?.audioState?.endedKeys || []);
+  state.audioStartConfirmedKeys = new Set(seed?.audioState?.confirmedKeys || []);
   state.currentAudioKey = "";
   state.activeAudioSectionIndex = null;
-  state.listeningReviewStarted = false;
+  state.listeningReviewStarted = Boolean(seed?.audioState?.reviewStarted);
   stopSpeakingRecording(false);
   revokeSpeakingRecordings();
-  state.speakingRecordings = {};
+  state.speakingRecordings = seed?.audioState?.recordings || {};
   state.speakingRecordingSection = null;
+
+  if (seed) {
+    state.answers = structuredClone(seed.answers || {});
+    state.review = new Set(seed.reviewIds || []);
+    state.currentQuestionId = seed.currentQuestionId || state.questionIndex[0]?.id || null;
+    state.currentSectionIndex = Number(seed.currentSectionIndex || 0);
+    state.fullMock = { ...state.fullMock, ...(seed.fullMockState || {}) };
+  } else if (window.IeltsServer?.authenticated) {
+    state.startingAttempt = true;
+    try {
+      const response = await window.IeltsServer.beginAttempt({
+        libraryEntryId: state.currentLibraryEntryId || null,
+        test: serializeTestForStorage(test),
+        mode: state.mode,
+        durationSeconds: state.remainingSeconds,
+        fullMockState: state.fullMock,
+      });
+      if (!response.leaseToken) {
+        throw Object.assign(new Error("这场考试已存在，请从未完成考试中恢复。"), { code: "ATTEMPT_EXISTS" });
+      }
+      if (response.attempt?.deadlineAt) state.deadlineAt = new Date(response.attempt.deadlineAt).getTime();
+    } catch (error) {
+      state.test = null;
+      showToast(`服务器未能创建考试记录：${error.message}`, "error");
+      return;
+    } finally {
+      state.startingAttempt = false;
+    }
+  }
 
   const modeRadio = document.querySelector(`input[name='mode'][value='${state.mode}']`);
   if (modeRadio) modeRadio.checked = true;
@@ -4445,12 +4720,18 @@ function startTest(test) {
   const fullMockPrefix = state.fullMock.active ? `全科模考 ${state.fullMock.index + 1}/4 · ` : "";
   els.examTitle.textContent = `${fullMockPrefix}${test.title || "Untitled Test"}`;
   els.examHomeBtn.hidden = state.fullMock.active;
-  state.currentQuestionId = state.questionIndex[0]?.id || null;
+  const pauseButton = document.getElementById("pausePracticeBtn");
+  if (pauseButton) {
+    pauseButton.hidden = state.mode !== "practice";
+    pauseButton.textContent = state.practicePaused ? "继续" : "暂停";
+  }
+  state.currentQuestionId = seed?.currentQuestionId || state.currentQuestionId || state.questionIndex[0]?.id || null;
 
   renderExam();
   renderNav();
   updateTimer();
   state.timerId = setInterval(tick, 1000);
+  if (!restored) scheduleServerAttemptSave(true);
 }
 
 function buildQuestionIndex(test) {
@@ -4530,6 +4811,7 @@ function switchSection(index) {
   state.currentQuestionId = first?.id || state.currentQuestionId;
   renderExam();
   renderNav();
+  scheduleServerAttemptSave(true);
 }
 
 function canSwitchToSection(index) {
@@ -4616,6 +4898,7 @@ function bindWritingEvents() {
       }
       renderPartTabs();
       renderNav();
+      scheduleServerAttemptSave();
     });
   });
 }
@@ -4679,6 +4962,7 @@ function bindSpeakingEvents() {
       state.answers[event.target.dataset.speakingNotes] = event.target.value;
       renderPartTabs();
       renderNav();
+      scheduleServerAttemptSave();
     });
   });
 }
@@ -4799,13 +5083,13 @@ function getRenderableImageRef(target) {
   if (!target) return "";
   return [target.image, target.imageAsset, target.imageName].find((ref) => {
     if (!ref || isPdfAssetRef(ref)) return false;
-    return /^data:image\//i.test(String(ref)) || resolveAssetUrl(ref) || isLikelyImageRef(ref);
+    return /^data:image\//i.test(String(ref)) || isProtectedFileRef(ref) || resolveAssetUrl(ref) || isLikelyImageRef(ref);
   }) || "";
 }
 
 function renderImage(ref) {
   if (!ref || isPdfAssetRef(ref)) return "";
-  const src = resolveAssetUrl(ref) || (isLikelyImageRef(ref) || /^data:image\//i.test(String(ref)) ? ref : "");
+  const src = resolveAssetUrl(ref) || (isLikelyImageRef(ref) || /^data:image\//i.test(String(ref)) || isProtectedFileRef(ref) ? ref : "");
   if (!src) return "";
   return `<img class="map-image" src="${escapeAttribute(src)}" alt="题目图片" />`;
 }
@@ -4870,6 +5154,7 @@ function bindQuestionEvents() {
       if (target && target.sectionIndex !== state.currentSectionIndex) state.currentSectionIndex = target.sectionIndex;
       updateQuestionClasses();
       renderNav();
+      scheduleServerAttemptSave();
     });
   });
   document.querySelectorAll("input[data-answer]").forEach((input) => {
@@ -4910,6 +5195,7 @@ function handleAnswerInput(event) {
   updateQuestionClasses();
   renderPartTabs();
   renderNav();
+  scheduleServerAttemptSave();
 }
 
 function updateQuestionClasses() {
@@ -4944,6 +5230,7 @@ function renderNav() {
         scrollCurrentIntoView();
       }
       renderNav();
+      scheduleServerAttemptSave();
     });
   });
 }
@@ -4983,13 +5270,28 @@ function expandQuestionLabels(item) {
 
 function tick() {
   if (state.submitted) return;
+  if (state.practicePaused) {
+    state.lastTimerTickAt = Date.now();
+    return;
+  }
+  const now = Date.now();
+  if (state.mode === "mock" && state.deadlineAt) {
+    state.remainingSeconds = Math.max(0, Math.ceil((state.deadlineAt - now) / 1000));
+  } else {
+    const elapsed = Math.max(0, Math.floor((now - (state.lastTimerTickAt || now)) / 1000));
+    if (elapsed > 0) state.remainingSeconds = Math.max(0, state.remainingSeconds - elapsed);
+  }
+  state.lastTimerTickAt = now;
   if (state.test?.testType === "listening" && getListeningAudioKeys().length > 0 && !state.listeningReviewStarted && state.remainingSeconds <= 0) {
     maybeStartListeningReviewCountdown(true);
     return;
   }
-  state.remainingSeconds -= 1;
   updateTimer();
   if (state.remainingSeconds <= 0) submitTest(true);
+  if (now - state.lastLeaseRefreshAt >= 30000) {
+    state.lastLeaseRefreshAt = now;
+    scheduleServerAttemptSave(true);
+  }
 }
 
 function updateTimer() {
@@ -5061,6 +5363,7 @@ function setupAudioGuards() {
       state.activeAudioSectionIndex = null;
       els.audioStartBtn.disabled = true;
       maybeStartListeningReviewCountdown();
+      scheduleServerAttemptSave(true);
     }
   });
   els.audioPlayer.addEventListener("error", () => {
@@ -5078,7 +5381,9 @@ function maybeStartListeningReviewCountdown(force = false) {
   if (!force && !allEnded) return;
   state.listeningReviewStarted = true;
   state.remainingSeconds = 180;
+  if (state.mode === "mock") state.deadlineAt = Date.now() + 180000;
   updateTimer();
+  scheduleServerAttemptSave(true);
   showToast(allEnded
     ? "听力音频已播放结束。你还有 3 分钟检查答案，时间到后将自动交卷。"
     : "考试时间已到。你还有 3 分钟检查答案，时间到后将自动交卷。", "warning");
@@ -5133,7 +5438,7 @@ async function toggleSpeakingRecording(sectionKey) {
     state.speakingRecorder.addEventListener("dataavailable", (event) => {
       if (event.data && event.data.size) state.speakingChunks.push(event.data);
     });
-    state.speakingRecorder.addEventListener("stop", () => {
+    state.speakingRecorder.addEventListener("stop", async () => {
       const blob = new Blob(state.speakingChunks, { type: state.speakingRecorder?.mimeType || "audio/webm" });
       const previous = state.speakingRecordings[sectionKey];
       if (previous?.url) URL.revokeObjectURL(previous.url);
@@ -5144,18 +5449,40 @@ async function toggleSpeakingRecording(sectionKey) {
         size: blob.size,
         createdAt: new Date().toISOString(),
       };
+      const recording = state.speakingRecordings[sectionKey];
+      if (window.IeltsServer?.authenticated && window.IeltsServer.activeAttempt) {
+        recording.uploadPromise = persistSpeakingRecording(sectionKey, recording);
+        await recording.uploadPromise.catch((error) => {
+          recording.uploadError = error.message;
+          showToast(`录音暂未保存到服务器：${error.message}`, "error");
+        });
+      }
       stream.getTracks().forEach((track) => track.stop());
       state.speakingRecorder = null;
       state.speakingChunks = [];
       state.speakingRecordingSection = null;
       renderExam();
       renderNav();
+      scheduleServerAttemptSave(true);
     });
     state.speakingRecorder.start();
     renderExam();
   } catch (error) {
     showToast(`无法开始录音：${error.message || error}`, "error");
   }
+}
+
+async function persistSpeakingRecording(sectionKey, recording) {
+  if (!recording?.blob || recording.fileId || !window.IeltsServer?.activeAttempt) return recording?.fileId || "";
+  const result = await window.IeltsServer.uploadBlob(recording.blob, {
+    attemptId: window.IeltsServer.activeAttempt.id,
+    purpose: "speaking-recording",
+    name: `speaking-part-${Number(sectionKey) + 1}.webm`,
+  });
+  recording.fileId = result.fileId;
+  recording.url = `/api/files/${encodeURIComponent(result.fileId)}`;
+  recording.uploadError = "";
+  return result.fileId;
 }
 
 function stopSpeakingRecording(saveRecording = true) {
@@ -5198,6 +5525,32 @@ async function submitTest(auto) {
       result = await transcribeSpeakingResult(result);
     } catch (error) {
       console.warn("Speaking transcript could not be generated before saving.", error);
+    }
+    try {
+      for (const [key, recording] of Object.entries(state.speakingRecordings || {})) {
+        if (!recording.fileId) await persistSpeakingRecording(key, recording);
+      }
+      result.parts = (result.parts || []).map((part) => {
+        const recording = state.speakingRecordings?.[part.recording?.key];
+        return recording ? { ...part, recording: { ...part.recording, fileId: recording.fileId || "" } } : part;
+      });
+    } catch (error) {
+      state.submitted = false;
+      state.lastTimerTickAt = Date.now();
+      state.timerId = setInterval(tick, 1000);
+      showToast(`录音保存失败，尚未交卷：${error.message}`, "error");
+      return;
+    }
+  }
+  if (window.IeltsServer?.authenticated) {
+    try {
+      await window.IeltsServer.submitAttempt(result, getServerAttemptSnapshot());
+    } catch (error) {
+      state.submitted = false;
+      state.lastTimerTickAt = Date.now();
+      state.timerId = setInterval(tick, 1000);
+      showToast(`成绩未能保存到服务器，尚未交卷：${error.message}`, "error");
+      return;
     }
   }
   saveHistory(result);
@@ -5321,6 +5674,7 @@ function buildSpeakingResult() {
       transcript: state.answers[id] || "",
       recording: state.speakingRecordings[key] ? {
         key,
+        fileId: state.speakingRecordings[key].fileId || "",
         size: state.speakingRecordings[key].size,
         createdAt: state.speakingRecordings[key].createdAt,
       } : null,
@@ -5468,6 +5822,10 @@ function showFullMockResult(results) {
 }
 
 function saveHistory(result) {
+  if (window.IeltsServer?.authenticated) {
+    renderHistoryList();
+    return;
+  }
   const key = "ielts-mock-history";
   try {
     const history = safeLoadHistory();
@@ -5518,6 +5876,14 @@ function updateSavedHistoryItem(result) {
     listeningTranscriptFiles: result.listeningTranscriptFiles ?? history[index].listeningTranscriptFiles,
     libraryEntryId: result.libraryEntryId ?? history[index].libraryEntryId,
   };
+  if (window.IeltsServer?.authenticated) {
+    window.IeltsServer.updateHistory(history[index]).catch((error) => {
+      console.warn("Server history could not be updated.", error);
+      showToast("反馈已显示，但尚未保存到服务器。", "error");
+    });
+    renderHistoryList();
+    return;
+  }
   try {
     setLocalStorageWithQuota("ielts-mock-history", JSON.stringify(history));
   } catch (error) {
@@ -5558,9 +5924,15 @@ function renderHistoryList() {
     });
   });
   document.querySelectorAll("[data-history-remove]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const history = safeLoadHistory();
       const index = Number(button.dataset.historyRemove);
+      const item = history[index];
+      if (window.IeltsServer?.authenticated && item) {
+        await window.IeltsServer.removeHistory(item.historyId || item.id);
+        renderHistoryList();
+        return;
+      }
       history.splice(index, 1);
       try {
         setLocalStorageWithQuota("ielts-mock-history", JSON.stringify(history));
@@ -5573,6 +5945,7 @@ function renderHistoryList() {
 }
 
 function safeLoadHistory() {
+  if (window.IeltsServer?.authenticated) return window.IeltsServer.getHistory();
   try {
     const history = window.IeltsCore.parseSafeJson(safeGetStorage(localStorage, "ielts-mock-history", "[]"));
     return Array.isArray(history) ? history : [];
@@ -5607,9 +5980,10 @@ function showHistoryDetail(item) {
             <td class="${row.correct ? "correct" : "wrong"}">${row.correct ? "正确" : `${row.awarded}/${row.points}`}</td>
             <td>${escapeHtml(row.userAnswer)}</td>
             <td>${escapeHtml(row.correctAnswer)}</td>
-            <td>${row.correct ? "" : `<button class="secondary-button compact-button" type="button" data-ai-explain="${index}">${row.aiExplanation ? "查看解析" : "AI解析"}</button>`}</td>
+            <td>${row.correct ? "" : `<button class="secondary-button compact-button" type="button" data-ai-explain="${index}">${row.aiExplanation ? "查看解析" : "AI解析"}</button> <button class="secondary-button compact-button" type="button" data-review-mistake="${index}">复盘</button>`}</td>
           </tr>
           ${row.correct ? "" : `<tr id="aiExplainRow${index}" class="ai-explain-row" hidden><td colspan="5"><div class="ai-feedback">${row.aiExplanation ? renderSavedAnswerExplanation(row.aiExplanation) : ""}</div></td></tr>`}
+          ${row.correct ? "" : `<tr id="mistakeReviewRow${index}" class="ai-explain-row" hidden><td colspan="5"><div class="mistake-review"><select data-mistake-reason="${index}"><option value="knowledge">知识点不熟</option><option value="misread">审题失误</option><option value="vocabulary">词汇问题</option><option value="time">时间不足</option><option value="careless">粗心</option></select><input data-mistake-note="${index}" placeholder="记录这道题的易错点" /><button class="primary-button compact-button" data-save-mistake="${index}">保存复盘</button><button class="secondary-button compact-button" data-retry-mistake="${index}">重新练习</button></div></td></tr>`}
         `).join("")}
       </tbody>
     </table>
@@ -5618,6 +5992,46 @@ function showHistoryDetail(item) {
   document.querySelectorAll("[data-ai-explain]").forEach((button) => {
     button.addEventListener("click", () => generateAnswerExplanation(item, Number(button.dataset.aiExplain), button));
   });
+  document.querySelectorAll("[data-review-mistake]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = document.getElementById(`mistakeReviewRow${button.dataset.reviewMistake}`);
+      if (row) row.hidden = !row.hidden;
+    });
+  });
+  document.querySelectorAll("[data-save-mistake]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.saveMistake);
+      const row = item.rows?.[index];
+      await window.IeltsServer.saveReview({ attemptId: item.historyId || item.id, questionId: row?.id, kind: "mistake", data: { reason: document.querySelector(`[data-mistake-reason='${index}']`)?.value, note: document.querySelector(`[data-mistake-note='${index}']`)?.value || "", row } });
+      showToast("错题复盘已保存。", "success");
+    });
+  });
+  document.querySelectorAll("[data-retry-mistake]").forEach((button) => {
+    button.addEventListener("click", () => startMistakePractice(item, item.rows?.[Number(button.dataset.retryMistake)]));
+  });
+}
+
+function startMistakePractice(historyItem, row) {
+  const source = structuredClone(historyItem?._test || {});
+  if (!source.sections || !row?.id) {
+    showToast("这条旧记录没有可恢复的原题内容。", "warning");
+    return;
+  }
+  const targetId = String(row.id);
+  source.sections = source.sections.map((section) => ({
+    ...section,
+    groups: (section.groups || []).map((group) => ({ ...group, questions: (group.questions || []).filter((question) => String(question.id) === targetId) })).filter((group) => group.questions.length),
+  })).filter((section) => (section.groups || []).length);
+  if (!source.sections.length) {
+    showToast("无法在原题中找到这道题。", "warning");
+    return;
+  }
+  source.title = `错题复练 · 第 ${targetId} 题`;
+  source.durationMinutes = 10;
+  state.mode = "practice";
+  state.currentLibraryEntryId = "";
+  if (els.resultDialog.open) els.resultDialog.close();
+  startTest(source);
 }
 
 function showWritingHistoryDetail(item) {
@@ -5634,6 +6048,8 @@ function showWritingHistoryDetail(item) {
         <div class="writing-prompt">${formatText(task.prompt || "")}</div>
         <div class="word-badge">${Number(task.words || 0)} words${task.minWords ? ` / min ${Number(task.minWords)}` : ""}</div>
         <pre>${escapeHtml(task.answer || "")}</pre>
+        <label class="field-stack writing-revision"><span>修改稿</span><textarea rows="8" data-writing-revision="${escapeAttribute(task.id)}" placeholder="根据反馈写下修改稿…">${escapeHtml(task.revision || "")}</textarea></label>
+        <button class="secondary-button" data-save-writing-revision="${escapeAttribute(task.id)}">保存修改稿</button>
       </article>
     `).join("")}
     <div id="aiFeedbackBox" class="ai-feedback" hidden>${item.aiFeedback ? renderAiFeedback(item.aiFeedback) : ""}</div>
@@ -5641,6 +6057,17 @@ function showWritingHistoryDetail(item) {
   `;
   openResultDialog();
   document.getElementById("aiScoreBtn")?.addEventListener("click", (event) => generateProductiveFeedback(item, document.getElementById("aiFeedbackBox"), event.currentTarget));
+  document.querySelectorAll("[data-save-writing-revision]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const taskId = button.dataset.saveWritingRevision;
+      const revision = document.querySelector(`[data-writing-revision='${selectorValue(taskId)}']`)?.value || "";
+      const task = item.tasks?.find((entry) => String(entry.id) === String(taskId));
+      if (task) task.revision = revision;
+      await window.IeltsServer.saveReview({ attemptId: item.historyId || item.id, questionId: taskId, kind: "writing-revision", data: { original: task?.answer || "", revision, aiFeedback: item.aiFeedback || null } });
+      updateSavedHistoryItem(item);
+      showToast("修改稿已保存。", "success");
+    });
+  });
 }
 
 function showSpeakingHistoryDetail(item) {
@@ -5656,7 +6083,8 @@ function showSpeakingHistoryDetail(item) {
         ${part.cueCard ? `<div class="writing-prompt">${escapeHtml(part.cueCard)}</div>` : ""}
         ${(part.questions || []).length ? `<ol>${part.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ol>` : ""}
         ${(part.prompts || []).length ? `<ul>${part.prompts.map((prompt) => `<li>${escapeHtml(prompt)}</li>`).join("")}</ul>` : ""}
-        <p class="instructions">${part.recording ? "本次记录包含录音；浏览器安全限制下，刷新后录音文件本身不会写入 localStorage。" : "未录音"}</p>
+        <p class="instructions">${part.recording?.fileId ? "录音已安全保存在服务器。" : part.recording ? "本次记录包含录音，但录音文件未完成服务器保存。" : "未录音"}</p>
+        ${part.recording?.fileId ? `<audio controls src="/api/files/${escapeAttribute(part.recording.fileId)}"></audio><a class="secondary-button compact-button" href="/api/files/${escapeAttribute(part.recording.fileId)}" download>下载录音</a>` : ""}
         <strong>录音转文字</strong>
         <pre>${escapeHtml(part.transcript || "暂无转写文本。")}</pre>
       </article>
